@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist
+dist-ssr
+*.tsbuildinfo
+electron/dist/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Local data (e.g. SQLite if stored in project)
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor and OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Vite
+*.local
+
+# Electron
+release/
+out/
+.electron/
+
+# Testing and coverage
+coverage/
+.nyc_output/
+
+# Optional
+.cache/
