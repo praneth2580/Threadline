@@ -3,7 +3,7 @@ import path from "path"
 import { getTableNames, initDb, queryTable } from "./db"
 import { closeScraper, scrape, type ScrapeOptions } from "./scraper"
 
-// Linux: avoid D-Bus scope error and /dev/shm shared-memory failures (e.g. Snap, restricted envs)
+// Linux: avoid D-Bus scope error and /dev/shm shared-memory issues (e.g. Snap, restricted envs)
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("no-sandbox")
   app.commandLine.appendSwitch("disable-dev-shm-usage")

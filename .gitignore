@@ -45,6 +45,7 @@ Thumbs.db
 release/
 out/
 .electron/
+.electron-tmp/
 
 # Testing and coverage
 coverage/
