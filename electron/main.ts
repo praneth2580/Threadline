@@ -1,6 +1,13 @@
 import { app, BrowserWindow, ipcMain, nativeTheme } from "electron"
 import path from "path"
 import { getTableNames, initDb, queryTable } from "./db"
+import { closeScraper, scrape, type ScrapeOptions } from "./scraper"
+
+// Linux: avoid D-Bus scope error and /dev/shm shared-memory failures (e.g. Snap, restricted envs)
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("no-sandbox")
+  app.commandLine.appendSwitch("disable-dev-shm-usage")
+}
 
 const isWindows = process.platform === "win32"
 
@@ -54,9 +61,14 @@ app.whenReady().then(() => {
   initDb(app.getPath("userData"))
   ipcMain.handle("db:getTables", () => getTableNames())
   ipcMain.handle("db:query", (_event, table: string, search?: string) => queryTable(table, search))
+  ipcMain.handle("scraper:scrape", (_event, options: ScrapeOptions) => scrape(options))
   createWindow()
 })
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()
+})
+
+app.on("before-quit", () => {
+  closeScraper()
 })

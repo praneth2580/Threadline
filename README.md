@@ -192,6 +192,30 @@ This starts:
 - The Vite development server
 - The Electron desktop application
 
+**Scraper (Playwright):** On first run you may need to install the browser once:
+
+```bash
+npx playwright install chromium
+```
+
+---
+
+## 🌐 Web scraping
+
+The app includes a **configurable web scraper** (Playwright) that works with any website.
+
+- **Headless vs headed**
+  - **Dev** (`npm run dev`): browser runs **headed** (visible window) so you can see what’s being loaded.
+  - **Production** (packaged app): browser runs **headless**.
+  - Override with env: `SCRAPE_HEADLESS=true` or `SCRAPE_HEADLESS=false`.
+
+- **Adaptable to any site**
+  - **URL + optional wait:** `waitForSelector` (CSS or XPath) and `waitForTimeout` for JS-rendered content.
+  - **Custom extraction:** pass a `script` (function body) that runs in the page and returns JSON-serializable data (e.g. `return { title: document.title, links: [...].map(...) };`).
+  - **Site adapters:** use `withSiteAdapter(config, url)` so each site has a small config (selectors, script) and you call `scrape(withSiteAdapter(siteConfig, url))`.
+
+- **IPC:** From the renderer use `window.api.scraper.scrape(options)` (only in the desktop app).
+
 ---
 
 ## 📦 Distribution

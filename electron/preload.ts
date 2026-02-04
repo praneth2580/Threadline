@@ -17,4 +17,8 @@ contextBridge.exposeInMainWorld("api", {
     query: (table: string, search?: string) =>
       ipcRenderer.invoke("db:query", table, search) as Promise<{ columns: string[]; rows: Record<string, unknown>[] }>,
   },
+  scraper: {
+    scrape: (options: { url: string; waitForSelector?: string; timeout?: number; waitForTimeout?: number; script?: string; returnHtml?: boolean; headers?: Record<string, string>; userAgent?: string }) =>
+      ipcRenderer.invoke("scraper:scrape", options),
+  },
 })
