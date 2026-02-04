@@ -7,16 +7,25 @@
 /* Header */
 .header {
   flex-shrink: 0;
-  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background-color: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.header-left {
+  min-width: 0;
 }
 
 .logo {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -30,17 +39,36 @@
 }
 
 .tagline {
-  margin: 0.25rem 0 0;
-  font-size: 0.875rem;
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
+}
+
+.theme-toggle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.theme-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
 }
 
 /* Profile bar */
 .profile-bar {
   flex-shrink: 0;
-  padding: 1rem 1.5rem;
+  padding: 0.875rem 1.5rem;
   background-color: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .profile-input-wrap {
@@ -53,9 +81,9 @@
 .profile-input {
   flex: 1;
   min-width: 0;
-  padding: 0.6rem 1rem;
+  padding: 0.625rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background-color: var(--bg-app);
   color: var(--text-primary);
 }
@@ -63,24 +91,29 @@
 .profile-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-muted);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 
 .platform-select {
-  padding: 0.6rem 0.75rem;
+  padding: 0.625rem 0.875rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background-color: var(--bg-app);
   color: var(--text-primary);
   font-size: 0.9rem;
-  cursor: pointer;
+}
+
+.platform-select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .btn-primary {
-  padding: 0.6rem 1.25rem;
+  padding: 0.625rem 1.25rem;
   background-color: var(--accent);
-  color: #0f0f0f;
-  font-weight: 500;
+  color: #0c0c0c;
+  font-weight: 600;
+  border-radius: 10px;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -126,7 +159,7 @@
   justify-content: center;
   background:
     linear-gradient(180deg, transparent 0%, var(--bg-app) 100%),
-    radial-gradient(ellipse at 50% 30%, var(--accent-muted) 0%, transparent 55%);
+    radial-gradient(ellipse 80% 50% at 50% 35%, var(--accent-subtle) 0%, transparent 60%);
 }
 
 .graph-placeholder-inner {
@@ -139,7 +172,7 @@
   display: block;
   font-size: 3rem;
   color: var(--accent);
-  opacity: 0.6;
+  opacity: 0.5;
   margin-bottom: 1rem;
 }
 
@@ -158,12 +191,13 @@
 
 /* Sidebar */
 .sidebar {
-  width: 260px;
+  width: 280px;
   flex-shrink: 0;
   padding: 1rem 1.25rem;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--border-subtle);
   background-color: var(--bg-surface);
   overflow-y: auto;
+  box-shadow: -2px 0 8px var(--shadow-sm);
 }
 
 .sidebar-section {
@@ -176,31 +210,32 @@
 
 .sidebar-title {
   margin: 0 0 0.75rem;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
 }
 
 .filter-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .filter-tab {
-  padding: 0.4rem 0.75rem;
-  font-size: 0.875rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
   background-color: var(--bg-app);
   color: var(--text-secondary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .filter-tab:hover {
   color: var(--text-primary);
-  border-color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-color: var(--text-tertiary);
 }
 
 .filter-tab.active {
@@ -216,23 +251,24 @@
 }
 
 .inspect-card {
-  padding: 0.75rem;
-  border-radius: 8px;
+  padding: 0.875rem;
+  border-radius: 10px;
   border: 1px solid var(--border);
-  background-color: var(--bg-app);
+  background-color: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
 }
 
 .inspect-label {
   margin: 0;
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
 }
 
 .inspect-value {
-  margin: 0.25rem 0 0;
-  font-size: 0.95rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.9375rem;
   font-weight: 500;
   word-break: break-all;
 }

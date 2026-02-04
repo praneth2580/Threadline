@@ -1,14 +1,47 @@
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, ipcMain, nativeTheme } from "electron"
 import path from "path"
+import { getTableNames, initDb, queryTable } from "./db"
+
+const isWindows = process.platform === "win32"
+
+function getWindowColors() {
+  const dark = nativeTheme.shouldUseDarkColors
+  return dark
+    ? { bg: "#0d0d0d", bar: "#1a1a1a", symbol: "#ffffff" }
+    : { bg: "#f5f5f5", bar: "#ffffff", symbol: "#000000" }
+}
 
 function createWindow() {
+  const colors = getWindowColors()
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 900,
+    minHeight: 600,
+    backgroundColor: colors.bg,
+    show: false,
+    title: "Threadline",
+    ...(isWindows && {
+      titleBarOverlay: {
+        color: colors.bar,
+        symbolColor: colors.symbol,
+        height: 40
+      }
+    }),
     webPreferences: {
       preload: path.join(__dirname, "preload.js")
     }
   })
+
+  nativeTheme.on("updated", () => {
+    const c = getWindowColors()
+    win.setBackgroundColor(c.bg)
+    if (isWindows && typeof (win as unknown as { setTitleBarOverlay?: (o: unknown) => void }).setTitleBarOverlay === "function") {
+      (win as unknown as { setTitleBarOverlay: (o: { color: string; symbolColor: string; height: number }) => void }).setTitleBarOverlay({ color: c.bar, symbolColor: c.symbol, height: 40 })
+    }
+  })
+
+  win.once("ready-to-show", () => win.show())
 
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL)
@@ -17,4 +50,13 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  initDb(app.getPath("userData"))
+  ipcMain.handle("db:getTables", () => getTableNames())
+  ipcMain.handle("db:query", (_event, table: string, search?: string) => queryTable(table, search))
+  createWindow()
+})
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit()
+})
