@@ -1,5 +1,6 @@
 import Database from "better-sqlite3"
 import path from "path"
+import { log } from "./logger"
 
 let db: Database.Database | null = null
 
@@ -7,15 +8,20 @@ let db: Database.Database | null = null
  * Initialize the SQLite database. Call once from main process with userData path.
  */
 export function initDb(userDataPath: string): Database.Database {
-  if (db) return db
+  if (db) {
+    log("db", "initDb: already initialized")
+    return db
+  }
 
   const dbPath = path.join(userDataPath, "threadline.db")
+  log("db", "initDb: opening", dbPath)
   db = new Database(dbPath)
 
   db.pragma("journal_mode = WAL")
   db.pragma("foreign_keys = ON")
-
+  log("db", "initDb: running migrations")
   runMigrations(db)
+  log("db", "initDb: done")
   return db
 }
 
@@ -35,18 +41,23 @@ const SEARCH_COLUMNS: Record<string, string[]> = {
 }
 
 export function getTableNames(): string[] {
+  log("db", "getTableNames")
   const database = getDb()
   const rows = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[]
-  return rows.map((r) => r.name)
+  const names = rows.map((r) => r.name)
+  log("db", "getTableNames: result =", names)
+  return names
 }
 
 export function queryTable(
   tableName: string,
   search?: string
 ): { columns: string[]; rows: Record<string, unknown>[] } {
+  log("db", "queryTable:", tableName, "search =", search ?? "(none)")
   const database = getDb()
   const columns = TABLE_COLUMNS[tableName]
   if (!columns) {
+    log("db", "queryTable: unknown table", tableName)
     throw new Error(`Unknown table: ${tableName}`)
   }
   const searchCols = SEARCH_COLUMNS[tableName] ?? []
@@ -61,6 +72,7 @@ export function queryTable(
   sql += " ORDER BY id LIMIT 500"
   const stmt = database.prepare(sql)
   const rows = stmt.all(...params) as Record<string, unknown>[]
+  log("db", "queryTable: rows =", rows.length)
   return { columns, rows }
 }
 

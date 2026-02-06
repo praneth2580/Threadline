@@ -1,24 +1,40 @@
-import { contextBridge, ipcRenderer, nativeTheme } from "electron"
+import { contextBridge, ipcRenderer } from "electron";
+import { log } from "./logger";
 
-function getSystemTheme(): "dark" | "light" {
-  return nativeTheme.shouldUseDarkColors ? "dark" : "light"
-}
-
-contextBridge.exposeInMainWorld("api", {
-  ping: () => "pong",
-  getSystemTheme,
-  onSystemThemeChange: (callback: (theme: "dark" | "light") => void) => {
-    const handler = () => callback(getSystemTheme())
-    nativeTheme.on("updated", handler)
-    return () => nativeTheme.off("updated", handler)
-  },
+// Safe API object
+const api = {
+  // Database API
   db: {
-    getTables: () => ipcRenderer.invoke("db:getTables") as Promise<string[]>,
-    query: (table: string, search?: string) =>
-      ipcRenderer.invoke("db:query", table, search) as Promise<{ columns: string[]; rows: Record<string, unknown>[] }>,
+    getTables: () => ipcRenderer.invoke("db:getTables"),
+    query: (table: string, search?: string) => ipcRenderer.invoke("db:query", table, search),
   },
+
+  // Scraper API
   scraper: {
-    scrape: (options: { url: string; waitForSelector?: string; timeout?: number; waitForTimeout?: number; script?: string; returnHtml?: boolean; headers?: Record<string, string>; userAgent?: string }) =>
-      ipcRenderer.invoke("scraper:scrape", options),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    scrape: (options: any) => ipcRenderer.invoke("scraper:scrape", options),
+    getSessions: () => ipcRenderer.invoke("scraper:getSessions"),
+    getAdapters: () => ipcRenderer.invoke("scraper:getAdapters"),
+    saveAdapter: (adapter: any) => ipcRenderer.invoke("scraper:saveAdapter", adapter),
   },
-})
+
+  // Theme API (simplified for now to prevent crashes)
+  getSystemTheme: () => "light", // Placeholder to safely default
+  onSystemThemeChange: (_cb: (theme: string) => void) => {
+    // Placeholder: No-op for now to prevent nativeTheme crash in renderer
+    return () => { };
+  },
+
+  // Ping
+  ping: () => "pong",
+};
+
+log("preload", "Exposing API");
+
+try {
+  contextBridge.exposeInMainWorld("api", api);
+  log("preload", "API exposed successfully");
+} catch (e) {
+  console.error("Failed to expose API:", e);
+  log("preload", "Failed to expose API:", e);
+}

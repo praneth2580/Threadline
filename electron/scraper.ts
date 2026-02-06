@@ -1,5 +1,9 @@
 import { app } from "electron"
 import { chromium, type Browser, type Page } from "playwright"
+import fs from "fs"
+import path from "path"
+import { log } from "./logger"
+import { type SocialAdapter } from "./adapters/social-adapter"
 
 let browser: Browser | null = null
 
@@ -36,6 +40,10 @@ export interface ScrapeOptions {
   headers?: Record<string, string>
   /** Optional user agent */
   userAgent?: string
+  /** Session name to load/save cookies (e.g., "twitter") */
+  session?: string
+  /** If true, opens a visible browser and waits for user to close it. Saves session if session name provided. */
+  interactive?: boolean
 }
 
 export interface ScrapeResult {
@@ -45,16 +53,31 @@ export interface ScrapeResult {
   error?: string
 }
 
-async function getBrowser(): Promise<Browser> {
-  if (browser && browser.isConnected()) return browser
-  const headless = isScrapeHeadless()
+async function getBrowser(forceHeaded = false): Promise<Browser> {
+  // If we need forced headed (interactive) and current is headless, close it
+  if (browser && browser.isConnected() && forceHeaded && isScrapeHeadless()) {
+    log("scraper", "getBrowser: switching to headed for interactive mode")
+    await browser.close()
+    browser = null
+  }
+
+  if (browser && browser.isConnected()) {
+    log("scraper", "getBrowser: reusing existing browser")
+    return browser
+  }
+
+  const headless = forceHeaded ? false : isScrapeHeadless()
+  log("scraper", "getBrowser: launching headless =", headless)
+
   const args = process.platform === "linux"
     ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
     : headless ? ["--no-sandbox", "--disable-setuid-sandbox"] : []
+
   browser = await chromium.launch({
     headless,
     args,
   })
+  log("scraper", "getBrowser: launched")
   return browser
 }
 
@@ -72,23 +95,70 @@ export async function scrape(options: ScrapeOptions): Promise<ScrapeResult> {
     returnHtml = false,
     headers,
     userAgent,
+    session,
+    interactive = false
   } = options
 
+  log("scraper", "scrape: url =", url, "interactive =", interactive, "session =", session)
   let page: Page | null = null
 
   try {
-    const b = await getBrowser()
+    const b = await getBrowser(interactive)
+
+    // Load session state
+    let storageState: string | undefined
+    const sessionDir = path.join(app.getPath("userData"), "sessions")
+    const sessionPath = session ? path.join(sessionDir, `${session}.json`) : undefined
+
+    if (sessionPath && fs.existsSync(sessionPath)) {
+      try {
+        // Read as file path string for Playwright, or object?
+        // Playwright context accepts 'storageState' as path string or object.
+        // Let's pass the object to handle errors better.
+        const content = fs.readFileSync(sessionPath, "utf-8")
+        JSON.parse(content) // Validate JSON
+        storageState = sessionPath // Playwright accepts file path
+        log("scraper", "scrape: using session", sessionPath)
+      } catch (e) {
+        log("scraper", "scrape: invalid session file", e)
+      }
+    }
+
+    log("scraper", "scrape: newContext")
     const context = await b.newContext({
       userAgent: userAgent ?? undefined,
       extraHTTPHeaders: headers ?? undefined,
       ignoreHTTPSErrors: true,
+      storageState: storageState as never // Type assert to avoid complex Record<...> mismatch if any
     })
-    page = await context.newPage()
 
+    page = await context.newPage()
+    log("scraper", "scrape: goto", url)
+
+    // Interactive: No timeout, let user do their thing
     await page.goto(url, {
       waitUntil: "domcontentloaded",
-      timeout,
+      timeout: interactive ? 0 : timeout,
     })
+    log("scraper", "scrape: loaded")
+
+    if (interactive) {
+      log("scraper", "scrape: waiting for interactive session to close...")
+      // Wait for page close
+      await page.waitForEvent("close")
+      log("scraper", "scrape: interactive session closed")
+
+      // Save session
+      if (session && sessionPath) {
+        const state = await context.storageState()
+        if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true })
+        fs.writeFileSync(sessionPath, JSON.stringify(state, null, 2))
+        log("scraper", "scrape: saved session to", sessionPath)
+      }
+
+      await context.close()
+      return { ok: true }
+    }
 
     if (waitForSelector) {
       const isXPath = waitForSelector.startsWith("//") || waitForSelector.startsWith("(")
@@ -120,14 +190,17 @@ export async function scrape(options: ScrapeOptions): Promise<ScrapeResult> {
     }
 
     await context.close()
+    log("scraper", "scrape: success")
     return result
   } catch (e) {
+    const err = e instanceof Error ? e.message : String(e)
+    log("scraper", "scrape: error", err)
     return {
       ok: false,
-      error: e instanceof Error ? e.message : String(e),
+      error: err,
     }
   } finally {
-    if (page) {
+    if (page && !page.isClosed()) {
       try {
         await page.context().close()
       } catch {
@@ -140,30 +213,22 @@ export async function scrape(options: ScrapeOptions): Promise<ScrapeResult> {
 /** Close the browser instance. Call on app quit. */
 export async function closeScraper(): Promise<void> {
   if (browser) {
+    log("scraper", "closeScraper")
     await browser.close()
     browser = null
+    log("scraper", "closeScraper: done")
   }
 }
 
-/**
- * Site adapter config: define once per site, then call scrape(withSiteAdapter(config, url)).
- * Makes the scraper adaptable to any website via a simple config object.
- */
 export interface SiteAdapterConfig {
-  /** Selector to wait for before extracting (e.g. ".profile-card" or "//main") */
   waitForSelector?: string
-  /** Extra ms to wait after load for JS-rendered content */
   waitForTimeout?: number
-  /** Navigation timeout (ms) */
   timeout?: number
-  /** Extraction script (function body returning JSON-serializable data) */
   script?: string
-  /** Request headers */
   headers?: Record<string, string>
   userAgent?: string
 }
 
-/** Build ScrapeOptions from a site adapter config and URL. Use with scrape(). */
 export function withSiteAdapter(
   config: SiteAdapterConfig,
   url: string,
@@ -179,4 +244,47 @@ export function withSiteAdapter(
     userAgent: config.userAgent,
     ...overrides,
   }
+}
+
+export async function getSessions(): Promise<string[]> {
+  const sessionDir = path.join(app.getPath("userData"), "sessions")
+  if (!fs.existsSync(sessionDir)) return []
+  try {
+    const files = fs.readdirSync(sessionDir)
+    return files.filter(f => f.endsWith(".json")).map(f => f.replace(".json", ""))
+  } catch (e) {
+    log("scraper", "getSessions: error", e)
+    return []
+  }
+}
+
+export async function getAdapters(): Promise<SocialAdapter[]> {
+  const adapterDir = path.join(app.getPath("userData"), "adapters")
+  if (!fs.existsSync(adapterDir)) return []
+  try {
+    const files = fs.readdirSync(adapterDir)
+    const adapters: SocialAdapter[] = []
+    for (const file of files) {
+      if (file.endsWith(".json")) {
+        try {
+          const content = fs.readFileSync(path.join(adapterDir, file), "utf-8")
+          adapters.push(JSON.parse(content))
+        } catch (e) {
+          log("scraper", "getAdapters: failed to parse", file, e)
+        }
+      }
+    }
+    return adapters
+  } catch (e) {
+    log("scraper", "getAdapters: error", e)
+    return []
+  }
+}
+
+export async function saveAdapter(adapter: SocialAdapter): Promise<void> {
+  const adapterDir = path.join(app.getPath("userData"), "adapters")
+  if (!fs.existsSync(adapterDir)) fs.mkdirSync(adapterDir, { recursive: true })
+  const filePath = path.join(adapterDir, `${adapter.platform}.json`)
+  fs.writeFileSync(filePath, JSON.stringify(adapter, null, 2))
+  log("scraper", "saveAdapter: saved", filePath)
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo, useEffect, Component, type ReactNode } from "react"
 import {
   ThemeProvider,
   CssBaseline,
@@ -6,453 +6,246 @@ import {
   Toolbar,
   Typography,
   IconButton,
-  Menu,
-  MenuItem,
-  TextField,
-  Button,
-  FormControl,
-  Select,
-  InputLabel,
   Box,
   Paper,
   Tabs,
   Tab,
-  ToggleButtonGroup,
-  ToggleButton,
-  ListItemIcon,
-  ListItemText,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   CircularProgress,
   Alert,
+  TableContainer,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  TextField,
+  Button
 } from "@mui/material"
-import DarkModeIcon from "@mui/icons-material/DarkMode"
-import LightModeIcon from "@mui/icons-material/LightMode"
-import SettingsBrightnessIcon from "@mui/icons-material/SettingsBrightness"
-import AccountTreeIcon from "@mui/icons-material/AccountTree"
-import SearchIcon from "@mui/icons-material/Search"
-import FilterListIcon from "@mui/icons-material/FilterList"
-import VisibilityIcon from "@mui/icons-material/Visibility"
-import StorageIcon from "@mui/icons-material/Storage"
-import RefreshIcon from "@mui/icons-material/Refresh"
-import type { Theme } from "@mui/material/styles"
+import {
+  DarkMode,
+  LightMode,
+  AccountTree,
+  Storage,
+  Search,
+  Refresh,
+  SettingsBrightness
+} from "@mui/icons-material"
+import { AccountsManager } from "./components/AccountsManager"
+import { RulesManager } from "./components/RulesManager"
 import { createAppTheme } from "./theme"
 
-const THEME_STORAGE_KEY = "threadline-theme"
-export type ThemeMode = "light" | "dark" | "system"
+// --- Error Boundary ---
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
 
-function getStoredTheme(): ThemeMode {
-  if (typeof window === "undefined") return "system"
-  const s = localStorage.getItem(THEME_STORAGE_KEY)
-  if (s === "light" || s === "dark" || s === "system") return s
-  return "system"
-}
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
 
-function useSystemTheme() {
-  const [systemDark, setSystemDark] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true
-    const api = (window as unknown as { api?: { getSystemTheme?: () => string } }).api
-    if (api?.getSystemTheme) return api.getSystemTheme() === "dark"
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-  })
-
-  useEffect(() => {
-    const api = (window as unknown as { api?: { onSystemThemeChange?: (cb: (theme: string) => void) => () => void } }).api
-    if (api?.onSystemThemeChange) {
-      const unsubscribe = api.onSystemThemeChange((theme: string) => setSystemDark(theme === "dark"))
-      return unsubscribe
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box sx={{ p: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100vh', justifyContent: 'center' }}>
+          <Alert severity="error" variant="filled" sx={{ mb: 2, maxWidth: 600 }}>
+            <Typography variant="h6">Application Crashed</Typography>
+            <Typography variant="body2" sx={{ mt: 1, fontFamily: 'monospace' }}>
+              {this.state.error?.message}
+            </Typography>
+          </Alert>
+          <Button variant="contained" onClick={() => window.location.reload()}>Reload Application</Button>
+        </Box>
+      )
     }
-    const m = window.matchMedia("(prefers-color-scheme: dark)")
-    const handler = () => setSystemDark(m.matches)
-    m.addEventListener("change", handler)
-    return () => m.removeEventListener("change", handler)
-  }, [])
-
-  return systemDark ? "dark" : "light"
+    return this.props.children
+  }
 }
 
-function useResolvedTheme() {
-  const systemTheme = useSystemTheme()
-  const [mode, setMode] = useState<ThemeMode>(getStoredTheme)
+// --- Types ---
+type ThemeMode = 'light' | 'dark'
 
-  useEffect(() => {
-    localStorage.setItem(THEME_STORAGE_KEY, mode)
-  }, [mode])
-
-  const resolvedMode: "light" | "dark" = useMemo(() => {
-    if (mode === "system") return systemTheme
-    return mode
-  }, [mode, systemTheme])
-
-  return { mode, setMode, resolvedMode }
-}
-
-type GraphFilter = "all" | "followers" | "following" | "mutual"
-
-const hasDbApi = () =>
-  typeof (window as unknown as { api?: { db?: unknown } }).api?.db === "object"
+// --- DB Browser Component ---
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const api = (window as any).api
 
 function DbBrowser() {
   const [tables, setTables] = useState<string[]>([])
   const [selectedTable, setSelectedTable] = useState("")
-  const [search, setSearch] = useState("")
-  const [searchInput, setSearchInput] = useState("")
   const [data, setData] = useState<{ columns: string[]; rows: Record<string, unknown>[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const api = (window as unknown as { api: { db: { getTables: () => Promise<string[]>; query: (t: string, s?: string) => Promise<{ columns: string[]; rows: Record<string, unknown>[] }> } } }).api
-
-  const loadTables = useMemo(
-    () => async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const list = await api.db.getTables()
-        setTables(list)
-        setSelectedTable((prev) => (list.length > 0 && !list.includes(prev) ? list[0] : prev))
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load tables")
-      } finally {
-        setLoading(false)
-      }
-    },
-    [api.db]
-  )
-
-  useEffect(() => {
-    if (!hasDbApi()) return
-    loadTables()
-  }, [loadTables])
-
-  useEffect(() => {
-    if (!hasDbApi() || !selectedTable) {
-      setData(null)
-      return
-    }
-    let cancelled = false
+  const loadTables = async () => {
+    if (!api?.db) return
     setLoading(true)
     setError(null)
-    api.db
-      .query(selectedTable, search || undefined)
-      .then((res) => {
-        if (!cancelled) setData(res)
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Query failed")
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
+    try {
+      const list = await api.db.getTables()
+      setTables(list)
+      if (list.length > 0 && !selectedTable) setSelectedTable(list[0])
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load tables")
+    } finally {
+      setLoading(false)
     }
-  }, [api.db, selectedTable, search])
+  }
 
-  const handleSearchSubmit = () => setSearch(searchInput)
+  useEffect(() => {
+    loadTables()
+  }, [])
 
-  if (!hasDbApi()) {
-    return (
-      <Box sx={{ p: 3, textAlign: "center" }}>
-        <StorageIcon sx={{ fontSize: 48, color: "text.secondary", opacity: 0.6 }} />
-        <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-          Database browser is only available in the desktop app.
-        </Typography>
-      </Box>
-    )
+  useEffect(() => {
+    if (!selectedTable || !api?.db) return
+    setLoading(true)
+    api.db.query(selectedTable)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then((res: any) => setData(res))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [selectedTable])
+
+  if (!api?.db) {
+    return <Box p={4}><Alert severity="warning">Database API not available</Alert></Box>
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <Box sx={{ p: 2, display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center", borderBottom: 1, borderColor: "divider" }}>
-        <FormControl size="small" sx={{ minWidth: 140 }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 2, alignItems: 'center' }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Table</InputLabel>
           <Select
-            label="Table"
             value={selectedTable}
+            label="Table"
             onChange={(e) => setSelectedTable(e.target.value)}
           >
-            {tables.map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
+            {tables.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
           </Select>
         </FormControl>
-        <TextField
-          size="small"
-          placeholder="Search…"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
-          sx={{ width: 220 }}
-        />
-        <Button variant="outlined" size="small" startIcon={<SearchIcon />} onClick={handleSearchSubmit}>
-          Search
-        </Button>
-        <Button variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={loadTables}>
-          Refresh
-        </Button>
+        <Button startIcon={<Refresh />} onClick={loadTables}>Refresh</Button>
       </Box>
-      {error && (
-        <Alert severity="error" onClose={() => setError(null)} sx={{ mx: 2, mt: 1 }}>
-          {error}
-        </Alert>
-      )}
-      <TableContainer sx={{ flex: 1, overflow: "auto" }}>
-        {loading && !data ? (
-          <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : data ? (
-          <Table size="small" stickyHeader>
+
+      {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
+
+      {loading ? (
+        <Box sx={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <CircularProgress />
+        </Box>
+      ) : data ? (
+        <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+          <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
-                {data.columns.map((col) => (
-                  <TableCell key={col} variant="head" sx={{ fontWeight: 600 }}>
-                    {col}
-                  </TableCell>
-                ))}
+                {data.columns.map(c => <TableCell key={c} sx={{ fontWeight: 600 }}>{c}</TableCell>)}
               </TableRow>
             </TableHead>
             <TableBody>
-              {data.rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={data.columns.length} align="center" color="text.secondary">
-                    No rows
-                  </TableCell>
+              {data.rows.map((row, i) => (
+                <TableRow key={i} hover>
+                  {data.columns.map(c => (
+                    <TableCell key={c} sx={{ fontFamily: 'monospace' }}>
+                      {row[c] !== null ? String(row[c]) : <span style={{ opacity: 0.5 }}>NULL</span>}
+                    </TableCell>
+                  ))}
                 </TableRow>
-              ) : (
-                data.rows.map((row, i) => (
-                  <TableRow key={i}>
-                    {data.columns.map((col) => (
-                      <TableCell key={col} sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
-                        {row[col] != null ? String(row[col]) : "NULL"}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              )}
+              ))}
             </TableBody>
           </Table>
-        ) : null}
-      </TableContainer>
+        </TableContainer>
+      ) : (
+        <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+          <Storage sx={{ fontSize: 48, opacity: 0.2, mb: 2 }} />
+          <Typography>Select a table to view data</Typography>
+        </Box>
+      )}
     </Box>
   )
 }
 
+// --- Graph Placeholder ---
+function GraphView() {
+  return (
+    <Box sx={{
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      bgcolor: 'background.default',
+      p: 4,
+      textAlign: 'center'
+    }}>
+      <AccountTree sx={{ fontSize: 64, color: 'primary.main', opacity: 0.5, mb: 2 }} />
+      <Typography variant="h5" gutterBottom>Graph Visualization</Typography>
+      <Typography color="text.secondary" sx={{ maxWidth: 400 }}>
+        Enter a profile ID above to load and visualize connections.
+        (This feature is currently being restored)
+      </Typography>
+      <Box sx={{ mt: 4, display: 'flex', gap: 1 }}>
+        <TextField placeholder="Enter Profile ID" size="small" />
+        <Button variant="contained" startIcon={<Search />}>Load</Button>
+      </Box>
+    </Box>
+  )
+}
+
+// --- App Content ---
 function AppContent() {
-  const { mode, setMode, resolvedMode } = useResolvedTheme()
-  const [themeAnchor, setThemeAnchor] = useState<null | HTMLElement>(null)
-  const [activeTab, setActiveTab] = useState(0)
-  const [username, setUsername] = useState("")
-  const [filter, setFilter] = useState<GraphFilter>("all")
-  const [isLoading, setIsLoading] = useState(false)
-  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const [mode, setMode] = useState<ThemeMode>(() => (localStorage.getItem('theme') as ThemeMode) || 'light')
+  const [tab, setTab] = useState(0)
 
-  const theme = useMemo(() => createAppTheme(resolvedMode), [resolvedMode])
+  const theme = useMemo(() => createAppTheme(mode), [mode])
 
-  const handleLoadProfile = () => {
-    if (!username.trim()) return
-    setIsLoading(true)
-    setTimeout(() => setIsLoading(false), 1200)
-  }
+  // Persist theme
+  useEffect(() => {
+    localStorage.setItem('theme', mode)
+  }, [mode])
 
-  const closeThemeMenu = () => setThemeAnchor(null)
-
-  const filters: { value: GraphFilter; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "followers", label: "Followers" },
-    { value: "following", label: "Following" },
-    { value: "mutual", label: "Mutual" },
-  ]
+  const toggleTheme = () => setMode(prev => prev === 'light' ? 'dark' : 'light')
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-        <AppBar position="static" color="default" enableColorOnDark>
-          <Toolbar sx={{ gap: 1 }}>
-            <img
-              src="/threadline-logo.svg"
-              alt=""
-              width={28}
-              height={28}
-              style={{ display: "block" }}
-            />
-            <Typography variant="h6" component="span" sx={{ flexGrow: 1 }}>
-              Threadline
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+        <AppBar position="static" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Toolbar variant="dense">
+            <Typography variant="h6" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box component="span" sx={{ color: 'primary.main', fontWeight: 900, letterSpacing: -1 }}>//</Box> Threadline
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
-              Visualize connections
-            </Typography>
-            <IconButton
-              onClick={(e: React.MouseEvent<HTMLButtonElement>) => setThemeAnchor(e.currentTarget)}
-              aria-label="Theme"
-              color="inherit"
-            >
-              {resolvedMode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
+
+            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mr: 2 }}>
+              <Tab icon={<AccountTree sx={{ fontSize: 20 }} />} iconPosition="start" label="Graph" />
+              <Tab icon={<Storage sx={{ fontSize: 20 }} />} iconPosition="start" label="Database" />
+              <Tab icon={<Storage sx={{ fontSize: 20 }} />} iconPosition="start" label="Accounts" />
+              <Tab icon={<Storage sx={{ fontSize: 20 }} />} iconPosition="start" label="Rules" />
+            </Tabs>
+
+            <IconButton onClick={toggleTheme} color="inherit">
+              {mode === 'dark' ? <LightMode /> : <DarkMode />}
             </IconButton>
           </Toolbar>
         </AppBar>
 
-        <Menu
-          anchorEl={themeAnchor}
-          open={Boolean(themeAnchor)}
-          onClose={closeThemeMenu}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          transformOrigin={{ vertical: "top", horizontal: "right" }}
-        >
-          <MenuItem onClick={() => { setMode("light"); closeThemeMenu() }}>
-            <ListItemIcon><LightModeIcon fontSize="small" /></ListItemIcon>
-            <ListItemText>Light{mode === "light" ? " ✓" : ""}</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={() => { setMode("dark"); closeThemeMenu() }}>
-            <ListItemIcon><DarkModeIcon fontSize="small" /></ListItemIcon>
-            <ListItemText>Dark{mode === "dark" ? " ✓" : ""}</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={() => { setMode("system"); closeThemeMenu() }}>
-            <ListItemIcon><SettingsBrightnessIcon fontSize="small" /></ListItemIcon>
-            <ListItemText>System{mode === "system" ? " ✓" : ""}</ListItemText>
-          </MenuItem>
-        </Menu>
-
-        <Tabs value={activeTab} onChange={(_, v: number) => setActiveTab(v)} sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}>
-          <Tab icon={<AccountTreeIcon />} iconPosition="start" label="Graph" />
-          <Tab icon={<StorageIcon />} iconPosition="start" label="Database" />
-        </Tabs>
-
-        {activeTab === 0 && (
-          <>
-            <Paper square elevation={0} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
-              <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", maxWidth: 560, flexWrap: "wrap" }}>
-                <TextField
-                  placeholder="Username or profile ID"
-                  value={username}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUsername(e.target.value)}
-                  onKeyDown={(e: React.KeyboardEvent) => e.key === "Enter" && handleLoadProfile()}
-                  disabled={isLoading}
-                  size="small"
-                  sx={{ flex: 1, minWidth: 180 }}
-                />
-                <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>Platform</InputLabel>
-                  <Select label="Platform" value="mock">
-                    <MenuItem value="mock">Mock (demo)</MenuItem>
-                  </Select>
-                </FormControl>
-                <Button
-                  variant="contained"
-                  onClick={handleLoadProfile}
-                  disabled={isLoading || !username.trim()}
-                  startIcon={isLoading ? null : <SearchIcon />}
-                >
-                  {isLoading ? "Loading…" : "Load profile"}
-                </Button>
-              </Box>
-            </Paper>
-
-            <Box sx={{ flex: 1, display: "flex", minHeight: 0 }}>
-              <Box
-                sx={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  bgcolor: "background.default",
-                  background: (t: Theme) =>
-                    `radial-gradient(ellipse 80% 50% at 50% 35%, ${t.palette.primary.main}14 0%, transparent 60%)`,
-                }}
-              >
-                <Box sx={{ textAlign: "center", px: 3, py: 4 }}>
-                  <AccountTreeIcon sx={{ fontSize: 56, color: "primary.main", opacity: 0.6 }} />
-                  <Typography variant="subtitle1" fontWeight={500} sx={{ mt: 1 }}>
-                    3D graph will appear here
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Enter a username and click Load profile to fetch relationships.
-                  </Typography>
-                </Box>
-              </Box>
-
-              <Paper
-                square
-                elevation={0}
-                sx={{
-                  width: 280,
-                  flexShrink: 0,
-                  p: 2,
-                  borderLeft: 1,
-                  borderColor: "divider",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
-                }}
-              >
-                <Box>
-                  <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: "uppercase", letterSpacing: 1, display: "block", mb: 1 }}>
-                    <FilterListIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
-                    Filter
-                  </Typography>
-                  <ToggleButtonGroup
-                    size="small"
-                    value={filter}
-                    exclusive
-                    onChange={(_: React.MouseEvent<HTMLElement>, v: GraphFilter | null) => v != null && setFilter(v)}
-                    fullWidth
-                    sx={{
-                      flexWrap: "wrap",
-                      "& .MuiToggleButton-root.Mui-selected": { borderRadius: 0 },
-                    }}
-                  >
-                    {filters.map((f) => (
-                      <ToggleButton key={f.value} value={f.value}>
-                        {f.label}
-                      </ToggleButton>
-                    ))}
-                  </ToggleButtonGroup>
-                </Box>
-
-                <Box>
-                  <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: "uppercase", letterSpacing: 1, display: "block", mb: 1 }}>
-                    <VisibilityIcon sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
-                    Inspect
-                  </Typography>
-                  {selectedNode ? (
-                    <Paper variant="outlined" sx={{ p: 1.5 }}>
-                      <Typography variant="caption" color="text.secondary">Selected node</Typography>
-                      <Typography variant="body2" fontWeight={500} sx={{ wordBreak: "break-all", mt: 0.25 }}>
-                        {selectedNode}
-                      </Typography>
-                      <Button size="small" color="primary" onClick={() => setSelectedNode(null)} sx={{ mt: 0.5 }}>
-                        Clear
-                      </Button>
-                    </Paper>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Click a node in the graph to inspect it.
-                    </Typography>
-                  )}
-                </Box>
-              </Paper>
-            </Box>
-          </>
-        )}
-
-        {activeTab === 1 && (
-          <Box sx={{ flex: 1, minHeight: 0 }}>
-            <DbBrowser />
-          </Box>
-        )}
+        <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {tab === 0 && <GraphView />}
+          {tab === 1 && <DbBrowser />}
+          {tab === 2 && <AccountsManager />}
+          {tab === 3 && <RulesManager />}
+        </Box>
       </Box>
     </ThemeProvider>
   )
 }
 
 export default function App() {
-  return <AppContent />
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  )
 }
