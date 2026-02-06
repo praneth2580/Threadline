@@ -1,0 +1,66 @@
+{
+    "build": {
+        "beforeDevCommand": "npm run dev --workspace=apps/ui",
+        "beforeBuildCommand": "npm run build --workspace=apps/ui",
+        "devPath": "http://localhost:5173",
+        "distDir": "../apps/ui/dist",
+        "withGlobalTauri": true
+    },
+    "package": {
+        "productName": "threadline",
+        "version": "0.1.0"
+    },
+    "tauri": {
+        "allowlist": {
+            "all": false,
+            "shell": {
+                "all": false,
+                "open": true
+            }
+        },
+        "bundle": {
+            "active": true,
+            "category": "DeveloperTool",
+            "copyright": "",
+            "deb": {
+                "depends": []
+            },
+            "externalBin": [],
+            "icon": [
+                "icons/32x32.png",
+                "icons/128x128.png",
+                "icons/icon.icns",
+                "icons/icon.ico"
+            ],
+            "identifier": "com.threadline.app",
+            "longDescription": "",
+            "macOS": {
+                "entitlements": null,
+                "exceptionDomain": "",
+                "frameworks": [],
+                "providerShortName": null,
+                "signingIdentity": null
+            },
+            "resources": [],
+            "shortDescription": "",
+            "targets": "all",
+            "windows": {
+                "certificateThumbprint": null,
+                "digestAlgorithm": "sha256",
+                "timestampUrl": ""
+            }
+        },
+        "security": {
+            "csp": null
+        },
+        "windows": [
+            {
+                "fullscreen": false,
+                "resizable": true,
+                "title": "Threadline",
+                "width": 1200,
+                "height": 800
+            }
+        ]
+    }
+}

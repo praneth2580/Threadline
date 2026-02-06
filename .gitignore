@@ -2,54 +2,40 @@
 node_modules/
 
 # Build outputs
-dist
-dist-ssr
-*.tsbuildinfo
-electron/dist/
+dist/
+build/
+*.AppImage
+*.deb
+*.exe
 
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Tauri
+src-tauri/target/
 
-# Environment and secrets
+# Playwright
+apps/scraper/browser-data/
+
+# Environment
 .env
 .env.local
 .env.*.local
 
-# Local data (e.g. SQLite if stored in project)
-*.db
-*.sqlite
-*.sqlite3
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# Editor and OS
-.vscode/*
-!.vscode/extensions.json
-.idea
+# OS
 .DS_Store
 Thumbs.db
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
 
-# Vite
-*.local
+# Logs
+*.log
+npm-debug.log*
 
-# Electron
-release/
-out/
-.electron/
-.electron-tmp/
+# TypeScript
+*.tsbuildinfo
 
-# Testing and coverage
-coverage/
-.nyc_output/
-
-# Optional
-.cache/
+# Lock files (optional - remove if you want to commit them)
+# package-lock.json
+# yarn.lock
