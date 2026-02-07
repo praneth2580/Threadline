@@ -1,42 +1,70 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.app-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.app-header h1 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.75rem;
+}
+
+.subtitle {
+  margin: 0 0 0.75rem 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.95rem;
+}
+
+.status-bar {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.status-bar span {
+  font-family: ui-monospace, monospace;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  min-height: 0;
+}
+
+.graph-container {
+  width: 100%;
+  max-width: 1100px;
+  height: 640px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+@media (prefers-color-scheme: light) {
+  .app-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
   }
-  to {
-    transform: rotate(360deg);
+  .subtitle {
+    color: rgba(0, 0, 0, 0.6);
   }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+  .status-bar {
+    color: rgba(0, 0, 0, 0.7);
   }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
+  .graph-container {
+    border-color: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.04);
+  }
 }
