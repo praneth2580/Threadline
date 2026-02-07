@@ -14,6 +14,10 @@ src-tauri/target/
 # Playwright
 apps/scraper/browser-data/
 
+# Scraper session storage (cookies)
+apps/scraper/.sessions/
+.sessions/
+
 # Environment
 .env
 .env.local

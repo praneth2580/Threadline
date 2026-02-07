@@ -8,6 +8,8 @@
     "dev:web": "npm run dev --workspace=apps/ui",
     "scraper:dev": "npm run dev --workspace=apps/scraper",
     "tauri": "tauri",
+    "build": "node scripts/build.js",
+    "build:win": "node scripts/build.js",
     "icons": "node scripts/generate-icons.js"
   },
   "devDependencies": {
