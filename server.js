@@ -60,18 +60,27 @@ const server = createServer((req, res) => {
   serveFile(filePath, res);
 });
 
+let browserChild = null;
+
 server.listen(PORT, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${PORT}`;
   console.log(`Server running at ${url}`);
-  startBrowser(url, process.env.USER_DATA_DIR || '/tmp/threadline');
+  browserChild = startBrowser(url, process.env.USER_DATA_DIR || '/tmp/threadline');
+  if (browserChild) {
+    browserChild.on('exit', (code, signal) => {
+      console.log('\nBrowser closed.');
+      server.close(() => process.exit(code ?? (signal ? 1 : 0)));
+    });
+  }
 });
 
-// Keep process alive
-process.on('SIGINT', () => {
+function shutdown() {
   console.log('\nShutting down...');
+  if (browserChild && !browserChild.killed) {
+    browserChild.kill('SIGTERM');
+  }
   server.close(() => process.exit(0));
-});
+}
 
-process.on('SIGTERM', () => {
-  server.close(() => process.exit(0));
-});
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

@@ -36,6 +36,12 @@ export function checkAvaliableBrowser(browserFamily = null) {
   return undefined;
 }
 
+/**
+ * Start the browser and return the child process so caller can tie lifecycles:
+ * - When the browser window is closed, the child exits → caller can process.exit().
+ * - When the Node process exits, the (non-detached) child is killed by the OS.
+ * Caller should: child.on('exit', () => process.exit()); and process.on('SIGINT', () => { child.kill(); process.exit(); });
+ */
 export function startBrowser(url, user_path) {
   const key = checkAvaliableBrowser();
   if (!key || !browserConfig[key]) {
@@ -43,8 +49,9 @@ export function startBrowser(url, user_path) {
     process.exit(1);
   }
   const { binary, args } = browserConfig[key];
-  const temp_args = args.map(arg => 
+  const temp_args = args.map(arg =>
     arg.replace("${url}", url).replace("${user_path}", user_path)
   );
-  spawn(binary, temp_args, { detached: true, stdio: "ignore" }).unref();
+  const child = spawn(binary, temp_args, { stdio: "ignore" });
+  return child;
 }
