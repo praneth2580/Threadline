@@ -14,9 +14,14 @@ import {
     TextField,
     DialogActions,
     CircularProgress,
-    Alert
+    Alert,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem
 } from "@mui/material"
 import { Add, Delete, Login, Refresh } from "@mui/icons-material"
+import { SOCIAL_PLATFORMS } from "@threadline/constants/platforms.js"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const api = (window as any).api
@@ -27,6 +32,7 @@ export function AccountsManager() {
     const [openAdd, setOpenAdd] = useState(false)
     const [newSessionName, setNewSessionName] = useState("")
     const [loginUrl, setLoginUrl] = useState("")
+    const [selectedPlatformId, setSelectedPlatformId] = useState("")
     const [isLoggingIn, setIsLoggingIn] = useState(false)
 
     const loadSessions = async () => {
@@ -60,6 +66,7 @@ export function AccountsManager() {
             setOpenAdd(false)
             setNewSessionName("")
             setLoginUrl("")
+            setSelectedPlatformId("")
             await loadSessions()
         } catch (e) {
             console.error("Login failed", e)
@@ -121,8 +128,27 @@ export function AccountsManager() {
                     <Alert severity="info" sx={{ mb: 2 }}>
                         A browser window will open. Log in to the site, then close the browser window to save the session.
                     </Alert>
+                    <FormControl fullWidth margin="normal" disabled={isLoggingIn}>
+                        <InputLabel>Platform</InputLabel>
+                        <Select
+                            value={selectedPlatformId}
+                            label="Platform"
+                            onChange={e => {
+                                const id = e.target.value
+                                setSelectedPlatformId(id)
+                                const p = SOCIAL_PLATFORMS.find(x => x.id === id)
+                                if (p) {
+                                    setLoginUrl(p.loginUrl)
+                                    if (!newSessionName.trim()) setNewSessionName(id + "-main")
+                                }
+                            }}
+                        >
+                            {SOCIAL_PLATFORMS.map(p => (
+                                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
                     <TextField
-                        autoFocus
                         label="Session Name (e.g. twitter-main)"
                         fullWidth
                         margin="normal"
@@ -131,7 +157,7 @@ export function AccountsManager() {
                         disabled={isLoggingIn}
                     />
                     <TextField
-                        label="Login URL (e.g. https://x.com/login)"
+                        label="Login URL"
                         fullWidth
                         margin="normal"
                         value={loginUrl}

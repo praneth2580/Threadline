@@ -1,0 +1,16 @@
+node_modules
+ui/node_modules
+ui/src
+ui/public
+ui/*.config.*
+ui/tsconfig*.json
+ui/.gitignore
+ui/README.md
+*.md
+.git
+.gitignore
+src-tauri
+apps
+scripts
+*.log
+.env*

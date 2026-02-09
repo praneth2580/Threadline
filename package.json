@@ -1,32 +1,46 @@
 {
   "name": "threadline",
   "version": "1.0.0",
-  "main": "electron/dist/main.js",
+  "description": "Desktop app to visualize social connections. No dependencies, just a Node scraper for session handling and login flows.",
+  "main": "main.js",
+  "type": "module",
   "private": true,
+  "workspaces": [
+    "ui"
+  ],
   "scripts": {
-    "dev": "concurrently \"npm:dev:ui\" \"npm:dev:electron\"",
-    "dev:ui": "cd ui && npm run dev",
-    "build:electron": "cd electron && tsc",
-    "dev:electron": "wait-on tcp:5173 && npm run build:electron && node scripts/electron-dev.js",
-    "postinstall": "CXXFLAGS=\"-std=c++20\" electron-rebuild -f -w better-sqlite3"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:ui": "npm run dev --workspace=ui",
+    "dev:backend": "node main.js",
+    "dev": "dotenv -e .env -- concurrently \"npm:dev:ui\" \"npm:dev:backend\"",
+    "build:ui": "npm run build --workspace ui",
+    "build": "npm run build:ui && pkg main.js",
+    "build:linux": "npm run build:ui && pkg main.js --targets node18-linux-x64",
+    "build:win": "npm run build:ui && pkg main.js --targets node18-win-x64",
+    "build:mac": "npm run build:ui && pkg main.js --targets node18-macos-x64"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "pkg": {
+    "scripts": [
+      "main.js",
+      "src/utils/check-browser.js"
+    ],
+    "assets": [
+      "ui/dist/**/*",
+      "browser-start-cmd.json"
+    ],
+    "outputPath": "dist",
+    "targets": [
+      "node18-linux-x64",
+      "node18-win-x64",
+      "node18-macos-x64"
+    ]
+  },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
-    "playwright": "^1.49.0"
+    "concurrently": "^9.2.1"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.2",
-    "@types/better-sqlite3": "^7.6.11",
-    "@types/node": "^25.2.0",
-    "concurrently": "^9.2.1",
-    "dotenv": "^17.2.4",
-    "electron": "^40.1.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3",
-    "wait-on": "^9.0.3"
+    "dotenv-cli": "^7.4.2",
+    "pkg": "^5.8.1"
   }
 }

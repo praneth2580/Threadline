@@ -1,0 +1,100 @@
+{
+    "google-chrome": {
+      "binary": "google-chrome",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--disable-extensions",
+        "--disable-infobars",
+        "--disable-dev-tools",
+        "--no-first-run",
+        "--window-size=1200,800"
+      ]
+    },
+    "google-chrome-stable": {
+      "binary": "google-chrome-stable",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--disable-extensions",
+        "--disable-infobars",
+        "--disable-dev-tools",
+        "--no-first-run",
+        "--window-size=1200,800"
+      ]
+    },
+    "chromium": {
+      "binary": "chromium",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--disable-extensions",
+        "--disable-infobars",
+        "--disable-dev-tools",
+        "--no-first-run",
+        "--window-size=1200,800"
+      ]
+    },
+    "chromium-browser": {
+      "binary": "chromium-browser",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--disable-extensions",
+        "--disable-infobars",
+        "--disable-dev-tools",
+        "--no-first-run",
+        "--window-size=1200,800"
+      ]
+    },
+    "microsoft-edge": {
+      "binary": "microsoft-edge",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--disable-extensions",
+        "--disable-infobars",
+        "--disable-dev-tools",
+        "--no-first-run",
+        "--window-size=1200,800"
+      ]
+    },
+    "microsoft-edge-stable": {
+      "binary": "microsoft-edge-stable",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--window-size=1200,800"
+      ]
+    },
+    "brave-browser": {
+      "binary": "brave-browser",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--disable-extensions",
+        "--disable-infobars",
+        "--disable-dev-tools",
+        "--no-first-run",
+        "--window-size=1200,800"
+      ]
+    },
+    "brave-browser-stable": {
+      "binary": "brave-browser-stable",
+      "args": [
+        "--app=${url}",
+        "--user-data-dir=${user_path}",
+        "--window-size=1200,800"
+      ]
+    },
+    "firefox": {
+      "binary": "firefox",
+      "args": [
+        "--new-window",
+        "${url}",
+        "--profile",
+        "${user_path}-firefox"
+      ]
+    }
+  }
+  
