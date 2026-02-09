@@ -3,9 +3,11 @@
     windows_subsystem = "windows"
 )]
 
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 /// Guard that kills the scraper process when dropped (app exit).
@@ -18,12 +20,10 @@ impl Drop for ScraperProcess {
 }
 
 /// Resolve path to scraper entry (apps/scraper/src/index.js).
-/// In dev: relative to workspace root (parent of src-tauri).
+/// CARGO_MANIFEST_DIR is only set at compile time, not when the binary runs,
+/// so we resolve project root from the executable path (target/debug or target/release).
 fn scraper_entry_path() -> Option<(PathBuf, PathBuf)> {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").ok()?;
-    let manifest = PathBuf::from(manifest_dir);
-    // src-tauri -> project root
-    let root = manifest.parent()?.parent()?;
+    let root = project_root()?;
     let scraper_dir = root.join("apps").join("scraper");
     let entry = scraper_dir.join("src").join("index.js");
     if entry.exists() {
@@ -33,10 +33,24 @@ fn scraper_entry_path() -> Option<(PathBuf, PathBuf)> {
     }
 }
 
+/// Project root: parent of src-tauri. Resolved from current exe path (e.g. .../src-tauri/target/debug/exe).
+fn project_root() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    // exe -> .../src-tauri/target/debug or target/release
+    let target_dir = exe.parent()?; // target/debug or target/release
+    let src_tauri = target_dir.parent()?; // src-tauri
+    let root = src_tauri.parent()?; // project root
+    Some(root.to_path_buf())
+}
+
 /// Spawn the Node.js scraper process. Returns None if path not found (e.g. production bundle).
+/// Uses THREADLINE_NODE_PATH if set (e.g. by dev script) so Node is found when not on Cargo's PATH.
 fn spawn_scraper() -> Option<ScraperProcess> {
     let (scraper_dir, entry) = scraper_entry_path()?;
-    let child = Command::new("node")
+    let node = std::env::var("THREADLINE_NODE_PATH")
+        .ok()
+        .unwrap_or_else(|| "node".to_string());
+    let child = Command::new(&node)
         .arg(entry)
         .current_dir(scraper_dir)
         .spawn()
@@ -44,10 +58,24 @@ fn spawn_scraper() -> Option<ScraperProcess> {
     Some(ScraperProcess(child))
 }
 
-/// Proxy HTTP request to the scraper (127.0.0.1:3000).
+/// Wait for the scraper to listen on 127.0.0.1:4573 (up to 15 seconds).
+fn wait_for_scraper_ready() {
+    const MAX_WAIT: Duration = Duration::from_secs(15);
+    const POLL_INTERVAL: Duration = Duration::from_millis(400);
+    let addr: std::net::SocketAddr = "127.0.0.1:4573".parse().expect("valid socket address");
+    let start = Instant::now();
+    while start.elapsed() < MAX_WAIT {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok() {
+            return;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+/// Proxy HTTP request to the scraper (127.0.0.1:4573).
 #[tauri::command]
 async fn scraper_request(method: String, path: String, body: Option<String>) -> Result<String, String> {
-    let url = format!("http://127.0.0.1:3000{}", path);
+    let url = format!("http://127.0.0.1:4573{}", path);
     let client = reqwest::Client::new();
     let mut req = match method.to_uppercase().as_str() {
         "GET" => client.get(&url),
@@ -59,7 +87,15 @@ async fn scraper_request(method: String, path: String, body: Option<String>) -> 
     if let Some(b) = body {
         req = req.body(b).header("Content-Type", "application/json");
     }
-    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let resp = req.send().await.map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("Connection refused") || msg.contains("connection refused") {
+            "Scraper service is not running. Restart the app and ensure Node.js is installed and on PATH."
+                .to_string()
+        } else {
+            msg
+        }
+    })?;
     let text = resp.text().await.map_err(|e| e.to_string())?;
     Ok(text)
 }
@@ -307,6 +343,9 @@ fn db_query(
 
 fn main() {
     let scraper_guard = spawn_scraper();
+    if scraper_guard.is_some() {
+        wait_for_scraper_ready();
+    }
 
     tauri::Builder::default()
         .manage(DbState(Mutex::new(None)))

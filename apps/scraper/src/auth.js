@@ -17,7 +17,9 @@ const PLATFORMS = {
     id: 'instagram',
     name: 'Instagram',
     loginUrl: 'https://www.instagram.com/accounts/login/',
-    successUrlPattern: /instagram\.com\/(?!accounts\/login|challenge)/,
+    successUrlPattern: /instagram\.com\/(?!accounts\/login|accounts\/two_factor|challenge)/,
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   },
   linkedin: {
     id: 'linkedin',
@@ -125,6 +127,24 @@ export function deleteSession(platformId) {
 
 const AUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
+/** Dismiss Instagram "Save login info?" / "Turn on notifications" dialogs so we save a clean session. */
+async function dismissInstagramDialogs(page) {
+  const selectors = [
+    'button:has-text("Not Now")',
+    'button:has-text("Not now")',
+    'button:has-text("Cancel")',
+    '[role="button"]:has-text("Not Now")',
+  ];
+  for (const sel of selectors) {
+    try {
+      await page.locator(sel).first.click({ timeout: 2000 });
+      await new Promise((r) => setTimeout(r, 1500));
+    } catch {
+      // no match or already gone
+    }
+  }
+}
+
 export async function startPlatformLogin(platformId) {
   const platform = PLATFORMS[platformId];
   if (!platform) throw new Error(`Unknown platform: ${platformId}`);
@@ -132,13 +152,16 @@ export async function startPlatformLogin(platformId) {
   const browser = await chromium.launch({
     headless: false,
     channel: undefined,
+    args: platformId === 'instagram' ? ['--disable-blink-features=AutomationControlled'] : undefined,
   });
 
   try {
-    const context = await browser.newContext({
+    const contextOptions = {
       viewport: { width: 1280, height: 800 },
       ignoreHTTPSErrors: true,
-    });
+      ...(platform.userAgent && { userAgent: platform.userAgent }),
+    };
+    const context = await browser.newContext(contextOptions);
     const page = await context.newPage();
 
     await page.goto(platform.loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -147,6 +170,9 @@ export async function startPlatformLogin(platformId) {
     while (Date.now() - start < AUTH_TIMEOUT_MS) {
       const url = page.url();
       if (platform.successUrlPattern.test(url)) {
+        if (platformId === 'instagram') {
+          await dismissInstagramDialogs(page);
+        }
         ensureSessionsDir();
         const sessionPath = path.join(SESSIONS_DIR, `${platformId}.json`);
         await context.storageState({ path: sessionPath });

@@ -37,6 +37,9 @@ function runTauriDev() {
   const env = { ...process.env };
   // So Tauri's beforeDevCommand (npm run dev --workspace=apps/ui) can find npm
   env.PATH = nodeBin + sep + (env.PATH || '');
+  
+  // So the Rust app can spawn the scraper even when "node" isn't on Cargo's PATH (e.g. nvm/fnm)
+  env.THREADLINE_NODE_PATH = process.execPath;
   if (hasCargoInCargoBin() && !hasCargoInPath()) {
     env.PATH = cargoBin + sep + env.PATH;
   }

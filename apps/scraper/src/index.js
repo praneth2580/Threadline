@@ -41,7 +41,7 @@ fastify.post('/auth/:platform/logout', async (request, reply) => {
 
 const start = async () => {
   try {
-    await fastify.listen({ port: 3000, host: '127.0.0.1' });
+    await fastify.listen({ port: 4573, host: '127.0.0.1' });
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
