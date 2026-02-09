@@ -43,9 +43,28 @@ Tauri doesn’t support cross-compiling from Windows to Linux. You need to build
 
 ### 1. Install Linux dependencies (Debian/Ubuntu)
 
+Tauri’s Rust build needs **pkg-config**, **OpenSSL dev**, and GLib/GTK/WebKit dev packages. If you see  
+`The pkg-config command could not be found`, `glib-2.0 >= 2.48`, or `openssl-sys` / "Could not find directory of OpenSSL installation", install:
+
+**Ubuntu 22.04+ (and most current Debian/Ubuntu):** use Ayatana appindicator (avoids conflict with `libappindicator3`):
+
 ```bash
 sudo apt-get update
-sudo apt-get install -y libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+sudo apt-get install -y \
+  pkg-config \
+  libssl-dev \
+  libglib2.0-dev \
+  libgtk-3-dev \
+  libwebkit2gtk-4.0-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  patchelf
+```
+
+**Older Ubuntu (e.g. 20.04):** if the above fails, try:
+
+```bash
+sudo apt-get install -y libappindicator3-dev
 ```
 
 (Fedora, Arch, etc. use different package names; see [Tauri prerequisites](https://v1.tauri.app/v1/guides/getting-started/prerequisites).)

@@ -71,18 +71,19 @@ function createIco() {
   return buf;
 }
 
-// Minimal 32x32 PNG (valid signature + IHDR + IDAT + IEND)
+// Minimal 32x32 PNG RGBA (Tauri requires RGBA, not RGB)
 function createPng32() {
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const ihdr = createPngChunk('IHDR', Buffer.from([
-    0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20, 0x08, 0x02, 0x00, 0x00, 0x00
-  ])); // 32x32, 8bit, RGB
-  const raw = Buffer.alloc(32 * 33 * 3 + 32); // filter byte per row
+    0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20, 0x08, 0x06, 0x00, 0x00, 0x00
+  ])); // 32x32, 8bit, RGBA (color type 6)
+  const rowLen = 1 + 32 * 4;
+  const raw = Buffer.alloc(32 * rowLen);
   let o = 0;
   for (let y = 0; y < 32; y++) {
     raw[o++] = 0;
     for (let x = 0; x < 32; x++) {
-      raw[o++] = 65; raw[o++] = 136; raw[o++] = 255;
+      raw[o++] = 65; raw[o++] = 136; raw[o++] = 255; raw[o++] = 255;
     }
   }
   const zlib = require('zlib');
@@ -115,18 +116,19 @@ function crc32(buf) {
   return (c ^ (-1)) >>> 0;
 }
 
-// 128x128 PNG - same as 32x32 but different dimensions in IHDR
+// 128x128 PNG RGBA (Tauri requires RGBA)
 function createPng128() {
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const ihdr = createPngChunk('IHDR', Buffer.from([
-    0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x08, 0x02, 0x00, 0x00, 0x00
-  ])); // 128x128, 8bit RGB
-  const raw = Buffer.alloc(128 * 129 * 3 + 128);
+    0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x08, 0x06, 0x00, 0x00, 0x00
+  ])); // 128x128, 8bit RGBA (color type 6)
+  const rowLen = 1 + 128 * 4;
+  const raw = Buffer.alloc(128 * rowLen);
   let o = 0;
   for (let y = 0; y < 128; y++) {
     raw[o++] = 0;
     for (let x = 0; x < 128; x++) {
-      raw[o++] = 65; raw[o++] = 136; raw[o++] = 255;
+      raw[o++] = 65; raw[o++] = 136; raw[o++] = 255; raw[o++] = 255;
     }
   }
   const zlib = require('zlib');

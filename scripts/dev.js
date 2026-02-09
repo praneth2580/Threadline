@@ -19,6 +19,15 @@ function hasCargoInPath() {
   }
 }
 
+function hasPkgConfig() {
+  try {
+    require('child_process').execSync('pkg-config --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function hasCargoInCargoBin() {
   return fs.existsSync(cargoPath);
 }
@@ -40,12 +49,8 @@ function runTauriDev() {
   child.on('exit', (code) => process.exit(code ?? 0));
 }
 
-if (hasCargoInPath() || hasCargoInCargoBin()) {
-  runTauriDev();
-  return;
-}
-
-console.error(`
+if (!hasCargoInPath() && !hasCargoInCargoBin()) {
+  console.error(`
   Rust/Cargo was not found. The Tauri desktop app needs the Rust toolchain.
 
   1. Install Rust: https://rustup.rs
@@ -54,4 +59,21 @@ console.error(`
 
   To run only the web UI (no desktop app), use: npm run dev:web
 `);
-process.exit(1);
+  process.exit(1);
+}
+
+if (process.platform === 'linux' && !hasPkgConfig()) {
+  console.error(`
+  pkg-config is required to build the Tauri app on Linux but was not found.
+  Install it and the other Linux dependencies with:
+
+    sudo apt-get update
+    sudo apt-get install -y pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+  (libssl-dev is needed for OpenSSL; libayatana-appindicator3-dev on Ubuntu 22.04+. See BUILD.md.)
+  Then run: npm run dev
+`);
+  process.exit(1);
+}
+
+runTauriDev();
