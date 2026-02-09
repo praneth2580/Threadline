@@ -3,10 +3,6 @@ import {
     Box,
     Button,
     Typography,
-    List,
-    ListItem,
-    ListItemText,
-    ListItemSecondaryAction,
     IconButton,
     Dialog,
     DialogTitle,
@@ -18,13 +14,20 @@ import {
     FormControl,
     InputLabel,
     Select,
-    MenuItem
+    MenuItem,
+    Card,
+    CardContent,
+    Grid
 } from "@mui/material"
-import { Add, Delete, Login, Refresh } from "@mui/icons-material"
+import { Add, Login, Refresh } from "@mui/icons-material"
 import { SOCIAL_PLATFORMS } from "@threadline/constants/platforms.js"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const api = (window as any).api
+
+function hasSessionForPlatform(sessions: string[], platformId: string): boolean {
+    return sessions.some(s => s.toLowerCase().includes(platformId))
+}
 
 export function AccountsManager() {
     const [sessions, setSessions] = useState<string[]>([])
@@ -52,17 +55,25 @@ export function AccountsManager() {
         loadSessions()
     }, [])
 
+    const openLoginForPlatform = (platformId: string) => {
+        const p = SOCIAL_PLATFORMS.find(x => x.id === platformId)
+        if (p) {
+            setSelectedPlatformId(platformId)
+            setLoginUrl(p.loginUrl)
+            setNewSessionName(platformId + "-main")
+            setOpenAdd(true)
+        }
+    }
+
     const handleLogin = async () => {
         if (!newSessionName.trim() || !loginUrl.trim()) return
         setIsLoggingIn(true)
         try {
-            // Interactive login
             await api.scraper.scrape({
                 url: loginUrl,
                 session: newSessionName,
                 interactive: true
             })
-            // Refresh list
             setOpenAdd(false)
             setNewSessionName("")
             setLoginUrl("")
@@ -77,56 +88,55 @@ export function AccountsManager() {
     }
 
     return (
-        <Box sx={{ p: 3, maxWidth: 800, mx: "auto" }}>
+        <Box sx={{ p: 3, maxWidth: 960, mx: "auto" }}>
             <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                <Typography variant="h5" sx={{ flexGrow: 1 }}>Saved Accounts</Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={() => setOpenAdd(true)}>
-                    Add Account
+                <Typography variant="h5" sx={{ flexGrow: 1 }}>Accounts</Typography>
+                <Button variant="outlined" startIcon={<Add />} onClick={() => setOpenAdd(true)}>
+                    Add account (custom)
                 </Button>
-                <IconButton onClick={loadSessions} sx={{ ml: 1 }}><Refresh /></IconButton>
+                <IconButton onClick={loadSessions} sx={{ ml: 1 }} aria-label="Refresh"><Refresh /></IconButton>
             </Box>
 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Log in to social media platforms to save your session (cookies).
-                These sessions will be used by the scraper to access protected data like followers/following.
+                Log in to social platforms to save your session. Each card uses the statically defined list of platforms.
             </Typography>
 
-            {loading ? <CircularProgress /> : (
-                <List sx={{ bgcolor: "background.paper", borderRadius: 1, border: 1, borderColor: "divider" }}>
-                    {sessions.length === 0 ? (
-                        <ListItem>
-                            <ListItemText primary="No saved accounts" secondary="Click 'Add Account' to log in to a new platform." />
-                        </ListItem>
-                    ) : sessions.map(s => (
-                        <ListItem key={s} divider>
-                            <ListItemText
-                                primary={s}
-                                secondary="Session saved"
-                            />
-                            <ListItemSecondaryAction>
-                                <Button
-                                    size="small"
-                                    startIcon={<Login />}
-                                    onClick={() => {
-                                        // Re-login / Refresh session
-                                        setNewSessionName(s)
-                                        setLoginUrl("https://google.com") // Default or ask user?
-                                        setOpenAdd(true)
-                                    }}
-                                >
-                                    Re-Login
-                                </Button>
-                            </ListItemSecondaryAction>
-                        </ListItem>
-                    ))}
-                </List>
+            {loading ? (
+                <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>
+            ) : (
+                <Grid container spacing={2}>
+                    {SOCIAL_PLATFORMS.map((platform) => {
+                        const hasSession = hasSessionForPlatform(sessions, platform.id)
+                        return (
+                            <Grid item xs={12} sm={6} md={4} key={platform.id}>
+                                <Card variant="outlined" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                                    <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+                                        <Typography fontWeight={600}>{platform.name}</Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {hasSession ? "Session saved" : "Not logged in"}
+                                        </Typography>
+                                        <Button
+                                            size="small"
+                                            variant={hasSession ? "outlined" : "contained"}
+                                            startIcon={<Login />}
+                                            onClick={() => openLoginForPlatform(platform.id)}
+                                            sx={{ mt: "auto" }}
+                                        >
+                                            {hasSession ? "Re-login" : "Log in"}
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        )
+                    })}
+                </Grid>
             )}
 
             <Dialog open={openAdd} onClose={() => !isLoggingIn && setOpenAdd(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Add New Account</DialogTitle>
+                <DialogTitle>Add or re-login account</DialogTitle>
                 <DialogContent>
                     <Alert severity="info" sx={{ mb: 2 }}>
-                        A browser window will open. Log in to the site, then close the browser window to save the session.
+                        A browser window will open. Log in, then close it to save the session.
                     </Alert>
                     <FormControl fullWidth margin="normal" disabled={isLoggingIn}>
                         <InputLabel>Platform</InputLabel>
@@ -149,7 +159,7 @@ export function AccountsManager() {
                         </Select>
                     </FormControl>
                     <TextField
-                        label="Session Name (e.g. twitter-main)"
+                        label="Session name (e.g. twitter-main)"
                         fullWidth
                         margin="normal"
                         value={newSessionName}
@@ -168,7 +178,7 @@ export function AccountsManager() {
                 <DialogActions>
                     <Button onClick={() => setOpenAdd(false)} disabled={isLoggingIn}>Cancel</Button>
                     <Button onClick={handleLogin} variant="contained" disabled={isLoggingIn || !newSessionName || !loginUrl}>
-                        {isLoggingIn ? "Waiting for Browser..." : "Open Browser & Login"}
+                        {isLoggingIn ? "Waiting for browser…" : "Open browser & login"}
                     </Button>
                 </DialogActions>
             </Dialog>
