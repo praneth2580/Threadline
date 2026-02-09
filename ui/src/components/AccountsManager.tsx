@@ -22,9 +22,8 @@ import {
 import { Add, Login, Refresh } from "@mui/icons-material"
 import { SOCIAL_PLATFORMS } from "@threadline/constants/platforms.js"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const api = (window as any).api
-const API_BASE = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:3000"
+const api = window.api
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:3000"
 
 async function getSessions(): Promise<string[]> {
     if (api?.scraper?.getSessions) return api.scraper.getSessions()

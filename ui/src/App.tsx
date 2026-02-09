@@ -31,8 +31,7 @@ import {
   AccountTree,
   Storage,
   Search,
-  Refresh,
-  SettingsBrightness
+  Refresh
 } from "@mui/icons-material"
 import { AccountsManager } from "./components/AccountsManager"
 import { RulesManager } from "./components/RulesManager"
@@ -71,8 +70,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 type ThemeMode = 'light' | 'dark'
 
 // --- DB Browser Component ---
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const api = (window as any).api
+const api = window.api
 
 function DbBrowser() {
   const [tables, setTables] = useState<string[]>([])
@@ -104,8 +102,7 @@ function DbBrowser() {
     if (!selectedTable || !api?.db) return
     setLoading(true)
     api.db.query(selectedTable)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then((res: any) => setData(res))
+      .then((res) => setData(res))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [selectedTable])

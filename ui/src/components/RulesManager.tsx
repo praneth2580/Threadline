@@ -19,8 +19,7 @@ import {
 } from "@mui/material"
 import { Add, Edit, Refresh, Save } from "@mui/icons-material"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const api = (window as any).api
+const api = window.api
 
 interface SocialAdapter {
     platform: string;
@@ -90,10 +89,13 @@ export function RulesManager() {
     }
 
     const handleSave = async () => {
+        if (!api?.scraper?.saveAdapter) {
+            setError("Scraper API not available")
+            return
+        }
         try {
             const parsed = JSON.parse(jsonText) as SocialAdapter
             if (!parsed.platform) throw new Error("Platform name is required")
-
             await api.scraper.saveAdapter(parsed)
             setOpenEditor(false)
             loadAdapters()
