@@ -2,8 +2,25 @@ import { useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
+
+function useContainerSize() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0]?.contentRect ?? { width: 0, height: 0 };
+      setSize({ width: Math.round(width), height: Math.round(height) });
+    });
+    ro.observe(el);
+    setSize({ width: el.offsetWidth, height: el.offsetHeight });
+    return () => ro.disconnect();
+  }, []);
+  return { ref, ...size };
+}
 
 export interface GraphNode {
   id: string;
@@ -77,8 +94,11 @@ interface NetworkGraphProps {
   refreshTrigger?: number; // increment to refetch (e.g. from parent)
 }
 
-export function NetworkGraph({ width = 800, height = 600, refreshTrigger = 0 }: NetworkGraphProps) {
+export function NetworkGraph({ width: widthProp, height: heightProp, refreshTrigger = 0 }: NetworkGraphProps) {
   const theme = useTheme();
+  const { ref: containerRef, width: containerWidth, height: containerHeight } = useContainerSize();
+  const width = widthProp ?? containerWidth;
+  const height = heightProp ?? containerHeight;
   const [data, setData] = useState<GraphData>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [usePlaceholder, setUsePlaceholder] = useState(false);
@@ -119,9 +139,11 @@ export function NetworkGraph({ width = 800, height = 600, refreshTrigger = 0 }: 
   if (loading) {
     return (
       <Box
+        ref={containerRef}
         sx={{
-          width: width || '100%',
-          height: height || 640,
+          width: '100%',
+          height: '100%',
+          minHeight: 280,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -135,31 +157,41 @@ export function NetworkGraph({ width = 800, height = 600, refreshTrigger = 0 }: 
   }
 
   return (
-    <Box sx={{ position: 'relative', width: width || '100%', height: height || 640 }}>
-      <ForceGraph3D
-        graphData={data}
-        nodeLabel={nodeLabel}
-        nodeVal="val"
-        width={width || 1100}
-        height={height || 640}
-        backgroundColor={bgColor}
-      />
+    <Box
+      ref={containerRef}
+      sx={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        minHeight: 280,
+      }}
+    >
+      {width > 0 && height > 0 && (
+        <ForceGraph3D
+          graphData={data}
+          nodeLabel={nodeLabel}
+          nodeVal="val"
+          width={width}
+          height={height}
+          backgroundColor={bgColor}
+        />
+      )}
       {usePlaceholder && (
         <Box
           sx={{
             position: 'absolute',
-            bottom: 16,
+            bottom: { xs: 8, sm: 16 },
             left: '50%',
             transform: 'translateX(-50%)',
-            px: 2,
+            px: { xs: 1.5, sm: 2 },
             py: 1,
             borderRadius: 1,
             bgcolor: 'background.paper',
             boxShadow: 1,
-            maxWidth: '90%',
+            maxWidth: '95%',
           }}
         >
-          <Typography variant="body2" color="text.secondary" textAlign="center">
+          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}>
             Add accounts and connections from the scraper or database to build your network graph.
           </Typography>
         </Box>

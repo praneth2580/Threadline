@@ -27,17 +27,42 @@ function App() {
   }, []);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
-      <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Toolbar variant="dense" disableGutters sx={{ px: 2, minHeight: { xs: 48 } }}>
-          <Box component="img" src="/threadline-logo.png" alt="" sx={{ height: 28, width: 'auto', mr: 1.5, display: { xs: 'none', sm: 'block' } }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          <Typography variant="h1" component="h1" sx={{ flexGrow: 1, fontSize: '1.25rem', fontWeight: 600 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default', overflow: 'hidden' }}>
+      <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+        <Toolbar
+          variant="dense"
+          disableGutters
+          sx={{
+            px: { xs: 1.5, sm: 2 },
+            minHeight: { xs: 48 },
+          }}
+        >
+          <Box
+            component="img"
+            src="/threadline-logo.png"
+            alt=""
+            sx={{ height: 28, width: 'auto', mr: 1.5, display: { xs: 'none', sm: 'block' } }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+          <Typography
+            variant="h1"
+            component="h1"
+            sx={{
+              flexGrow: 1,
+              fontSize: { xs: '1.1rem', sm: '1.25rem' },
+              fontWeight: 600,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             Threadline
           </Typography>
           <ThemeToggle />
         </Toolbar>
       </AppBar>
-      <Box component="main" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <Box component="main" sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Paper
           elevation={0}
           square
@@ -48,6 +73,7 @@ function App() {
             flexDirection: 'column',
             borderRadius: 0,
             bgcolor: 'background.paper',
+            overflow: 'hidden',
           }}
         >
           <AppTabs />

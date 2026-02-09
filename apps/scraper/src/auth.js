@@ -25,6 +25,60 @@ const PLATFORMS = {
     loginUrl: 'https://www.linkedin.com/login',
     successUrlPattern: /linkedin\.com\/(?:feed|mynetwork|in\/)/,
   },
+  facebook: {
+    id: 'facebook',
+    name: 'Facebook',
+    loginUrl: 'https://www.facebook.com/login',
+    successUrlPattern: /facebook\.com\/(?!login|checkpoint|recover)/,
+  },
+  reddit: {
+    id: 'reddit',
+    name: 'Reddit',
+    loginUrl: 'https://www.reddit.com/login',
+    successUrlPattern: /reddit\.com\/(?!login|register)/,
+  },
+  tiktok: {
+    id: 'tiktok',
+    name: 'TikTok',
+    loginUrl: 'https://www.tiktok.com/login',
+    successUrlPattern: /tiktok\.com\/(?!login|auth)/,
+  },
+  bluesky: {
+    id: 'bluesky',
+    name: 'Bluesky',
+    loginUrl: 'https://bsky.social/login',
+    successUrlPattern: /bsky\.social\/(?!login)/,
+  },
+  youtube: {
+    id: 'youtube',
+    name: 'YouTube',
+    loginUrl: 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com/',
+    successUrlPattern: /youtube\.com\//,
+  },
+  pinterest: {
+    id: 'pinterest',
+    name: 'Pinterest',
+    loginUrl: 'https://www.pinterest.com/login/',
+    successUrlPattern: /pinterest\.com\/(?!login)/,
+  },
+  tumblr: {
+    id: 'tumblr',
+    name: 'Tumblr',
+    loginUrl: 'https://www.tumblr.com/login',
+    successUrlPattern: /tumblr\.com\/(?!login|register)/,
+  },
+  discord: {
+    id: 'discord',
+    name: 'Discord',
+    loginUrl: 'https://discord.com/login',
+    successUrlPattern: /discord\.com\/(?:channels|app|login\?redirect)/,
+  },
+  mastodon: {
+    id: 'mastodon',
+    name: 'Mastodon',
+    loginUrl: 'https://mastodon.social/auth/sign_in',
+    successUrlPattern: /mastodon\.social\/(?!auth\/)/,
+  },
 };
 
 function ensureSessionsDir() {
