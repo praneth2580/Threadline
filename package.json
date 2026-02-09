@@ -2,7 +2,7 @@
   "name": "threadline",
   "version": "1.0.0",
   "description": "Desktop app to visualize social connections. No dependencies, just a Node scraper for session handling and login flows.",
-  "main": "main.js",
+  "main": "server.js",
   "type": "module",
   "private": true,
   "workspaces": [
@@ -11,18 +11,20 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev:ui": "npm run dev --workspace=ui",
-    "dev:backend": "node main.js",
+    "dev:backend": "node server.js",
     "dev": "dotenv -e .env -- concurrently --kill-others \"npm:dev:ui\" \"npm:dev:backend\"",
     "build:ui": "npm run build --workspace ui",
-    "build": "npm run build:ui && pkg main.js",
-    "build:linux": "npm run build:ui && pkg main.js --targets node18-linux-x64",
-    "build:win": "npm run build:ui && pkg main.js --targets node18-win-x64",
-    "build:mac": "npm run build:ui && pkg main.js --targets node18-macos-x64"
+    "build": "npm run build:ui && pkg server.js",
+    "build:linux": "npm run build:ui && pkg server.js --targets node18-linux-x64",
+    "build:win": "npm run build:ui && pkg server.js --targets node18-win-x64",
+    "build:mac": "npm run build:ui && pkg server.js --targets node18-macos-x64"
   },
   "pkg": {
     "scripts": [
-      "main.js",
-      "src/utils/check-browser.js"
+      "server.js",
+      "src/utils/check-browser.js",
+      "src/scraper.js",
+      "src/db.js"
     ],
     "assets": [
       "ui/dist/**/*",
@@ -37,7 +39,9 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
-    "concurrently": "^9.2.1"
+    "cheerio": "^1.0.0",
+    "concurrently": "^9.2.1",
+    "playwright": "^1.49.0"
   },
   "devDependencies": {
     "dotenv-cli": "^7.4.2",

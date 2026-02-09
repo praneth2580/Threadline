@@ -24,6 +24,28 @@ import { SOCIAL_PLATFORMS } from "@threadline/constants/platforms.js"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const api = (window as any).api
+const API_BASE = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:3000"
+
+async function getSessions(): Promise<string[]> {
+    if (api?.scraper?.getSessions) return api.scraper.getSessions()
+    const r = await fetch(`${API_BASE}/api/sessions`)
+    if (!r.ok) throw new Error(await r.text())
+    return r.json()
+}
+
+async function scrape(options: { url: string; session: string; interactive: boolean }) {
+    if (api?.scraper?.scrape) return api.scraper.scrape(options)
+    const r = await fetch(`${API_BASE}/api/scrape`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+    })
+    if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: r.statusText }))
+        throw new Error((err as { error?: string }).error || "Scrape failed")
+    }
+    return r.json()
+}
 
 function hasSessionForPlatform(sessions: string[], platformId: string): boolean {
     return sessions.some(s => s.toLowerCase().includes(platformId))
@@ -39,10 +61,9 @@ export function AccountsManager() {
     const [isLoggingIn, setIsLoggingIn] = useState(false)
 
     const loadSessions = async () => {
-        if (!api?.scraper?.getSessions) return
         setLoading(true)
         try {
-            const list = await api.scraper.getSessions()
+            const list = await getSessions()
             setSessions(list)
         } catch (e) {
             console.error(e)
@@ -69,10 +90,10 @@ export function AccountsManager() {
         if (!newSessionName.trim() || !loginUrl.trim()) return
         setIsLoggingIn(true)
         try {
-            await api.scraper.scrape({
+            await scrape({
                 url: loginUrl,
                 session: newSessionName,
-                interactive: true
+                interactive: true,
             })
             setOpenAdd(false)
             setNewSessionName("")
