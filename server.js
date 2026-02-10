@@ -9,7 +9,7 @@ import { readFileSync, statSync, existsSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { startBrowser } from "./src/utils/check-browser.js";
-import * as scraper from "./src/scraper.js";
+import { createApiHandler } from "./src/api.js";
 
 // When run from pkg CJS bundle, import.meta is empty; entry.cjs sets THREADLINE_BUNDLE_DIR
 const __dirname =
@@ -17,7 +17,9 @@ const __dirname =
   dirname(fileURLToPath(import.meta.url));
 
 const UI_DIST_PATH = resolve(__dirname, "ui/dist");
-const HAS_STATIC = existsSync(UI_DIST_PATH);
+// In dev (npm run dev) we never serve ui/dist; UI is loaded via Vite. Only serve static in prod.
+const IS_DEV = process.env.THREADLINE_DEV === "1";
+const HAS_STATIC = !IS_DEV && existsSync(UI_DIST_PATH);
 
 const HOST = "127.0.0.1";
 const PREFERRED_PORT = HAS_STATIC
@@ -31,6 +33,12 @@ function getBrowserUrl() {
   if (HAS_STATIC && actualPort != null) return `http://${HOST}:${actualPort}`;
   return `http://${HOST}:${DEV_UI_PORT}`;
 }
+
+// `/api/*` routes live in src/api.js (keeps this file focused on server + static + browser lifecycle)
+const handleApi = createApiHandler({
+  host: HOST,
+  getPort: () => actualPort,
+});
 
 const MIME_TYPES = {
   ".html": "text/html",
@@ -71,91 +79,8 @@ function serveFile(filePath, res) {
   }
 }
 
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (ch) => { body += ch; });
-    req.on("end", () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function sendJson(res, status, data) {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-function cors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-}
-
-async function handleApi(req, res) {
-  cors(res);
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-  const pathname = (req.url || "").split("?")[0];
-
-  if (pathname === "/api/config" && req.method === "GET") {
-    sendJson(res, 200, {
-      port: actualPort,
-      apiBase: actualPort != null ? `http://${HOST}:${actualPort}` : null,
-    });
-    return;
-  }
-
-  if (pathname === "/api/sessions" && req.method === "GET") {
-    try {
-      sendJson(res, 200, scraper.getSessions());
-    } catch (e) {
-      sendJson(res, 500, { error: e.message });
-    }
-    return;
-  }
-
-  if (pathname === "/api/scrape" && req.method === "POST") {
-    let body;
-    try {
-      body = await readJson(req);
-    } catch (e) {
-      sendJson(res, 400, { error: "Invalid JSON" });
-      return;
-    }
-    const { url, session, selector, interactive } = body || {};
-    if (!url) {
-      sendJson(res, 400, { error: "url is required" });
-      return;
-    }
-    try {
-      if (interactive && session) {
-        await scraper.runInteractiveScrape(url, session);
-        sendJson(res, 200, { ok: true, message: "Session saved" });
-        return;
-      }
-      const data = session
-        ? await scraper.scrapeWithSession(url, { session, selector })
-        : await scraper.scrapeUrl(url, { selector });
-      sendJson(res, 200, data);
-    } catch (e) {
-      sendJson(res, 500, { error: e.message });
-    }
-    return;
-  }
-
-  sendJson(res, 404, { error: "Not found" });
-}
-
 let browserChild = null;
+let hasStartedBrowser = false;
 
 const server = createServer(async (req, res) => {
   const pathname = req.url === "/" ? "/index.html" : (req.url || "").split("?")[0];
@@ -186,17 +111,25 @@ function tryListen() {
   server.listen(port, HOST, () => {
     actualPort = server.address().port;
     const browserUrl = getBrowserUrl();
-    console.log(
-      HAS_STATIC
-        ? `Server running at ${browserUrl}`
-        : `API at http://${HOST}:${actualPort} → browser at ${browserUrl}`
-    );
-    browserChild = startBrowser(browserUrl, process.env.USER_DATA_DIR || "/tmp/threadline");
-    if (browserChild) {
-      browserChild.on("exit", (code, signal) => {
-        console.log("\nBrowser closed.");
-        server.close(() => process.exit(code ?? (signal ? 1 : 0)));
-      });
+
+    // Avoid duplicate log lines / browser windows if listen callback fires more than once.
+    if (!hasStartedBrowser) {
+      console.log(
+        HAS_STATIC
+          ? `Server running at ${browserUrl}`
+          : `API at http://${HOST}:${actualPort} → browser at ${browserUrl}`
+      );
+      browserChild = startBrowser(browserUrl, process.env.USER_DATA_DIR || "/tmp/threadline");
+      hasStartedBrowser = true;
+
+      // In prod, tying browser ↔ server lifecycle makes sense.
+      // In dev, we keep the backend running even if the browser window is closed.
+      if (browserChild && !IS_DEV) {
+        browserChild.on("exit", (code, signal) => {
+          console.log("\nBrowser closed.");
+          server.close(() => process.exit(code ?? (signal ? 1 : 0)));
+        });
+      }
     }
   });
 }

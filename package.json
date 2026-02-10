@@ -11,7 +11,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev:ui": "npm run dev --workspace=ui",
-    "dev:backend": "node server.js",
+    "dev:backend": "cross-env THREADLINE_DEV=1 node server.js",
     "dev": "dotenv -e .env -- concurrently --kill-others \"npm:dev:ui\" \"npm:dev:backend\"",
     "build:ui": "npm run build --workspace ui",
     "build": "npm run build:ui && npm run build:server && pkg entry.cjs --targets node18-linux-x64,node18-win-x64,node18-macos-x64",
@@ -38,13 +38,14 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
-    "cheerio": "^1.0.0",
+    "cheerio": "^1.2.0",
     "concurrently": "^9.2.1",
     "playwright": "^1.49.0"
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "dotenv-cli": "^7.4.2",
-    "pkg": "^5.8.1",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "pkg": "^5.8.1"
   }
 }

@@ -6,14 +6,19 @@ const PORT_RANGE = 20;
 
 let cachedBase: string | null = null;
 
-/** Same origin = we're served by the backend (prod). */
-function isSameOrigin(): boolean {
-  if (typeof window === "undefined") return false;
+function isJsonResponse(r: Response): boolean {
+  const ct = r.headers.get("content-type") || "";
+  return ct.toLowerCase().includes("application/json");
+}
+
+async function tryGetConfig(base: string): Promise<{ apiBase?: string } | null> {
   try {
-    const origin = window.location.origin;
-    return origin.startsWith("http://127.0.0.1:") || origin.startsWith("http://localhost:");
+    const r = await fetch(`${base}/api/config`, { method: "GET" });
+    if (!r.ok) return null;
+    if (!isJsonResponse(r)) return null;
+    return (await r.json()) as { apiBase?: string };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -23,27 +28,26 @@ function isSameOrigin(): boolean {
  */
 export async function getApiBase(): Promise<string> {
   if (cachedBase !== null) return cachedBase;
-  if (isSameOrigin()) {
-    cachedBase = "";
-    return cachedBase;
-  }
   const explicit = import.meta.env.VITE_API_URL;
   if (explicit && typeof explicit === "string") {
     cachedBase = explicit.replace(/\/$/, "");
     return cachedBase;
   }
+
+  // If the UI is served by the backend (prod), same-origin /api/config will return JSON.
+  const sameOriginConfig = await tryGetConfig("");
+  if (sameOriginConfig) {
+    cachedBase = "";
+    return cachedBase;
+  }
+
   for (let i = 0; i < PORT_RANGE; i++) {
     const port = PORT_START + i;
     const base = `http://127.0.0.1:${port}`;
-    try {
-      const r = await fetch(`${base}/api/config`, { method: "GET" });
-      if (r.ok) {
-        const data = (await r.json()) as { apiBase?: string };
-        cachedBase = data.apiBase ?? base;
-        return cachedBase;
-      }
-    } catch {
-      continue;
+    const data = await tryGetConfig(base);
+    if (data) {
+      cachedBase = data.apiBase ?? base;
+      return cachedBase;
     }
   }
   cachedBase = `http://127.0.0.1:${PORT_START}`;

@@ -21,7 +21,6 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  TextField,
   Button
 } from "@mui/material"
 import {
@@ -29,11 +28,10 @@ import {
   LightMode,
   AccountTree,
   Storage,
-  Search,
   Refresh
 } from "@mui/icons-material"
 import { AccountsManager } from "./components/AccountsManager"
-import { RulesManager } from "./components/RulesManager"
+import { GraphView } from "./components/GraphView"
 import { createAppTheme } from "./theme"
 
 // --- Error Boundary ---
@@ -163,33 +161,6 @@ function DbBrowser() {
   )
 }
 
-// --- Graph Placeholder ---
-function GraphView() {
-  return (
-    <Box sx={{
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      bgcolor: 'background.default',
-      p: 4,
-      textAlign: 'center'
-    }}>
-      <AccountTree sx={{ fontSize: 64, color: 'primary.main', opacity: 0.5, mb: 2 }} />
-      <Typography variant="h5" gutterBottom>Graph Visualization</Typography>
-      <Typography color="text.secondary" sx={{ maxWidth: 400 }}>
-        Enter a profile ID above to load and visualize connections.
-        (This feature is currently being restored)
-      </Typography>
-      <Box sx={{ mt: 4, display: 'flex', gap: 1 }}>
-        <TextField placeholder="Enter Profile ID" size="small" />
-        <Button variant="contained" startIcon={<Search />}>Load</Button>
-      </Box>
-    </Box>
-  )
-}
-
 // --- App Content ---
 function AppContent() {
   const [mode, setMode] = useState<ThemeMode>(() => (localStorage.getItem('theme') as ThemeMode) || 'light')
@@ -218,7 +189,6 @@ function AppContent() {
               <Tab icon={<AccountTree sx={{ fontSize: 20 }} />} iconPosition="start" label="Graph" />
               <Tab icon={<Storage sx={{ fontSize: 20 }} />} iconPosition="start" label="Database" />
               <Tab icon={<Storage sx={{ fontSize: 20 }} />} iconPosition="start" label="Accounts" />
-              <Tab icon={<Storage sx={{ fontSize: 20 }} />} iconPosition="start" label="Rules" />
             </Tabs>
 
             <IconButton onClick={toggleTheme} color="inherit">
@@ -231,7 +201,6 @@ function AppContent() {
           {tab === 0 && <GraphView />}
           {tab === 1 && <DbBrowser />}
           {tab === 2 && <AccountsManager />}
-          {tab === 3 && <RulesManager />}
         </Box>
       </Box>
     </ThemeProvider>

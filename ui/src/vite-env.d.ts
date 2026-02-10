@@ -17,8 +17,6 @@ interface Window {
     scraper?: {
       getSessions(): Promise<string[]>;
       scrape(options: { url: string; session: string; interactive: boolean }): Promise<unknown>;
-      getAdapters?(): Promise<unknown[]>;
-      saveAdapter?(adapter: unknown): Promise<void>;
     };
   };
 }
