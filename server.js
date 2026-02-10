@@ -10,8 +10,10 @@ import { fileURLToPath } from "url";
 import { startBrowser } from "./src/utils/check-browser.js";
 import * as scraper from "./src/scraper.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// When run from pkg CJS bundle, import.meta is empty; entry.cjs sets THREADLINE_BUNDLE_DIR
+const __dirname =
+  process.env.THREADLINE_BUNDLE_DIR ||
+  dirname(fileURLToPath(import.meta.url));
 
 const UI_DIST_PATH = resolve(__dirname, "ui/dist");
 const HAS_STATIC = existsSync(UI_DIST_PATH);

@@ -3,6 +3,8 @@ node_modules
 
 # Build / package output
 dist
+build
+server.bundle.cjs
 *.local
 
 # Environment (keep .env.example)
@@ -31,3 +33,5 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+entry-*

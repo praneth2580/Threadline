@@ -7,7 +7,6 @@ import {
   Typography,
   IconButton,
   Box,
-  Paper,
   Tabs,
   Tab,
   CircularProgress,

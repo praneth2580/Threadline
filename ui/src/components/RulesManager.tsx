@@ -14,7 +14,6 @@ import {
     TextField,
     DialogActions,
     Paper,
-    Divider,
     Alert
 } from "@mui/material"
 import { Add, Edit, Refresh, Save } from "@mui/icons-material"
@@ -49,7 +48,7 @@ const DEFAULT_ADAPTER: SocialAdapter = {
 
 export function RulesManager() {
     const [adapters, setAdapters] = useState<SocialAdapter[]>([])
-    const [loading, setLoading] = useState(false)
+    const [, setLoading] = useState(false)
 
     // Editor State
     const [openEditor, setOpenEditor] = useState(false)
@@ -61,7 +60,7 @@ export function RulesManager() {
         if (!api?.scraper?.getAdapters) return
         setLoading(true)
         try {
-            const list = await api.scraper.getAdapters()
+            const list = (await api.scraper.getAdapters()) as SocialAdapter[]
             setAdapters(list)
         } catch (e) {
             console.error(e)

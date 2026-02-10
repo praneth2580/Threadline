@@ -2,7 +2,10 @@ import * as cheerio from "cheerio";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { chromium } from "playwright";
+
+function getChromium() {
+  return require("playwright").chromium;
+}
 
 const APP_DIR = process.env.THREADLINE_APP_DIR || join(homedir(), ".threadline");
 const SESSIONS_FILE = join(APP_DIR, "sessions.json");
@@ -87,7 +90,7 @@ export async function runInteractiveScrape(url, sessionName) {
   ensureAppDir();
   const profilePath = join(PROFILES_DIR, sessionName);
   mkdirSync(profilePath, { recursive: true });
-  const browser = await chromium.launchPersistentContext(profilePath, {
+  const browser = await getChromium().launchPersistentContext(profilePath, {
     headless: false,
     viewport: { width: 1280, height: 800 },
     userAgent: "Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0",
@@ -111,7 +114,7 @@ export async function scrapeWithSession(url, options = {}) {
   if (!options.session) return scrapeUrl(url, { selector: options.selector });
   const profilePath = join(PROFILES_DIR, options.session);
   if (!existsSync(profilePath)) return scrapeUrl(url, { selector: options.selector });
-  const browser = await chromium.launchPersistentContext(profilePath, { headless: true });
+  const browser = await getChromium().launchPersistentContext(profilePath, { headless: true });
   let html;
   try {
     const page = browser.pages()[0] || (await browser.newPage());

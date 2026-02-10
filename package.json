@@ -14,23 +14,22 @@
     "dev:backend": "node server.js",
     "dev": "dotenv -e .env -- concurrently --kill-others \"npm:dev:ui\" \"npm:dev:backend\"",
     "build:ui": "npm run build --workspace ui",
-    "build": "npm run build:ui && pkg server.js",
-    "build:linux": "npm run build:ui && pkg server.js --targets node18-linux-x64",
-    "build:win": "npm run build:ui && pkg server.js --targets node18-win-x64",
-    "build:mac": "npm run build:ui && pkg server.js --targets node18-macos-x64"
+    "build": "npm run build:ui && npm run build:server && pkg entry.cjs --targets node18-linux-x64,node18-win-x64,node18-macos-x64",
+    "build:linux": "npm run build:ui && npm run build:server && pkg entry.cjs --targets node18-linux-x64",
+    "build:win": "npm run build:ui && npm run build:server && pkg entry.cjs --targets node18-win-x64",
+    "build:mac": "npm run build:ui && npm run build:server && pkg entry.cjs --targets node18-macos-x64",
+    "build:server": "esbuild server.js --bundle --platform=node --format=cjs --outfile=server.bundle.cjs --external:better-sqlite3 --external:playwright --external:undici"
   },
   "pkg": {
     "scripts": [
-      "server.js",
-      "src/utils/check-browser.js",
-      "src/scraper.js",
-      "src/db.js"
+      "entry.cjs",
+      "server.bundle.cjs"
     ],
     "assets": [
       "ui/dist/**/*",
       "browser-start-cmd.json"
     ],
-    "outputPath": "dist",
+    "outputPath": "build",
     "targets": [
       "node18-linux-x64",
       "node18-win-x64",
@@ -45,6 +44,7 @@
   },
   "devDependencies": {
     "dotenv-cli": "^7.4.2",
-    "pkg": "^5.8.1"
+    "pkg": "^5.8.1",
+    "esbuild": "^0.24.0"
   }
 }
