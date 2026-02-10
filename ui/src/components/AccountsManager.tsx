@@ -21,20 +21,22 @@ import {
 } from "@mui/material"
 import { Add, Login, Refresh } from "@mui/icons-material"
 import { SOCIAL_PLATFORMS } from "@threadline/constants/platforms.js"
+import { getApiBase } from "../api"
 
 const api = window.api
-const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:3000"
 
 async function getSessions(): Promise<string[]> {
     if (api?.scraper?.getSessions) return api.scraper.getSessions()
-    const r = await fetch(`${API_BASE}/api/sessions`)
+    const base = await getApiBase()
+    const r = await fetch(`${base}/api/sessions`)
     if (!r.ok) throw new Error(await r.text())
     return r.json()
 }
 
 async function scrape(options: { url: string; session: string; interactive: boolean }) {
     if (api?.scraper?.scrape) return api.scraper.scrape(options)
-    const r = await fetch(`${API_BASE}/api/scrape`, {
+    const base = await getApiBase()
+    const r = await fetch(`${base}/api/scrape`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(options),

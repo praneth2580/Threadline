@@ -1,7 +1,8 @@
 /**
  * Single entry: HTTP server (API + optional static UI) and browser lifecycle.
- * - Dev: ui/dist missing → serve API only on API_PORT (3000), open browser to DEV_UI_PORT (5173, Vite).
- * - Prod: ui/dist exists → serve static + API on PORT (5173), open browser to self.
+ * - Dev: ui/dist missing → API on first free port in [API_PORT..+20] (default 3000), browser to DEV_UI_PORT (5173, Vite).
+ * - Prod: ui/dist exists → static + API on first free port in [PORT..+20] (default 5173), browser to self.
+ * GET /api/config returns { port, apiBase } so the UI can discover the backend port when dynamic.
  */
 import { createServer } from "http";
 import { readFileSync, statSync, existsSync } from "fs";
@@ -18,12 +19,18 @@ const __dirname =
 const UI_DIST_PATH = resolve(__dirname, "ui/dist");
 const HAS_STATIC = existsSync(UI_DIST_PATH);
 
-const PORT = HAS_STATIC
+const HOST = "127.0.0.1";
+const PREFERRED_PORT = HAS_STATIC
   ? Number(process.env.PORT) || 5173
   : Number(process.env.API_PORT) || 3000;
-const BROWSER_URL = HAS_STATIC
-  ? `http://127.0.0.1:${PORT}`
-  : `http://127.0.0.1:${Number(process.env.DEV_UI_PORT) || 5173}`;
+const PORT_RANGE = 20; // try PREFERRED_PORT .. PREFERRED_PORT + PORT_RANGE - 1
+const DEV_UI_PORT = Number(process.env.DEV_UI_PORT) || 5173;
+
+let actualPort = null; // set when server is listening
+function getBrowserUrl() {
+  if (HAS_STATIC && actualPort != null) return `http://${HOST}:${actualPort}`;
+  return `http://${HOST}:${DEV_UI_PORT}`;
+}
 
 const MIME_TYPES = {
   ".html": "text/html",
@@ -99,6 +106,14 @@ async function handleApi(req, res) {
   }
   const pathname = (req.url || "").split("?")[0];
 
+  if (pathname === "/api/config" && req.method === "GET") {
+    sendJson(res, 200, {
+      port: actualPort,
+      apiBase: actualPort != null ? `http://${HOST}:${actualPort}` : null,
+    });
+    return;
+  }
+
   if (pathname === "/api/sessions" && req.method === "GET") {
     try {
       sendJson(res, 200, scraper.getSessions());
@@ -160,16 +175,43 @@ const server = createServer(async (req, res) => {
   res.end("Not found");
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(HAS_STATIC ? `Server running at ${BROWSER_URL}` : `API at http://127.0.0.1:${PORT} → browser at ${BROWSER_URL}`);
-  browserChild = startBrowser(BROWSER_URL, process.env.USER_DATA_DIR || "/tmp/threadline");
-  if (browserChild) {
-    browserChild.on("exit", (code, signal) => {
-      console.log("\nBrowser closed.");
-      server.close(() => process.exit(code ?? (signal ? 1 : 0)));
-    });
+let tryPortIndex = 0;
+
+function tryListen() {
+  if (tryPortIndex >= PORT_RANGE) {
+    console.error(`No port available in range ${PREFERRED_PORT}–${PREFERRED_PORT + PORT_RANGE - 1}`);
+    process.exit(1);
+  }
+  const port = PREFERRED_PORT + tryPortIndex;
+  server.listen(port, HOST, () => {
+    actualPort = server.address().port;
+    const browserUrl = getBrowserUrl();
+    console.log(
+      HAS_STATIC
+        ? `Server running at ${browserUrl}`
+        : `API at http://${HOST}:${actualPort} → browser at ${browserUrl}`
+    );
+    browserChild = startBrowser(browserUrl, process.env.USER_DATA_DIR || "/tmp/threadline");
+    if (browserChild) {
+      browserChild.on("exit", (code, signal) => {
+        console.log("\nBrowser closed.");
+        server.close(() => process.exit(code ?? (signal ? 1 : 0)));
+      });
+    }
+  });
+}
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    tryPortIndex += 1;
+    tryListen();
+  } else {
+    console.error(err);
+    process.exit(1);
   }
 });
+
+tryListen();
 
 function shutdown() {
   console.log("\nShutting down...");

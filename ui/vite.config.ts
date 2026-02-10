@@ -12,7 +12,7 @@ export default defineConfig({
   },
   server: {
     port: Number(process.env.DEV_UI_PORT) || 5173,
-    strictPort: true, // keep in sync with backend; change port via .env DEV_UI_PORT
+    strictPort: false, // if port is blocked, use next (5174, …); backend discovers API port via /api/config
     cors: true,
   },
 })
