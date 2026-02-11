@@ -57,6 +57,28 @@ export function DbBrowser() {
         }
     }
 
+    const loadData = async () => {
+        if (!selectedTable) {
+            setData(null)
+            return
+        }
+        setLoading(true)
+        setError(null)
+        try {
+            const base = await getApiBase()
+            const params = new URLSearchParams({ table: selectedTable })
+            if (searchDebounced) params.set("search", searchDebounced)
+            const r = await fetch(`${base}/api/db/query?${params}`)
+            if (!r.ok) throw new Error(r.statusText)
+            const res = await r.json()
+            setData(res)
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Failed to load data")
+        } finally {
+            setLoading(false)
+        }
+    }
+
     useEffect(() => {
         loadTables()
     }, [])
@@ -67,33 +89,7 @@ export function DbBrowser() {
     }, [search])
 
     useEffect(() => {
-        if (!selectedTable) {
-            setData(null)
-            return
-        }
-        let cancelled = false
-        setLoading(true)
-        setError(null)
-        const params = new URLSearchParams({ table: selectedTable })
-        if (searchDebounced) params.set("search", searchDebounced)
-        getApiBase()
-            .then((base) => fetch(`${base}/api/db/query?${params}`))
-            .then((r) => {
-                if (!r.ok) throw new Error(r.statusText)
-                return r.json()
-            })
-            .then((res: { columns: string[]; rows: Record<string, unknown>[] }) => {
-                if (!cancelled) setData(res)
-            })
-            .catch((e: Error) => {
-                if (!cancelled) setError(e.message)
-            })
-            .finally(() => {
-                if (!cancelled) setLoading(false)
-            })
-        return () => {
-            cancelled = true
-        }
+        loadData()
     }, [selectedTable, searchDebounced])
 
     const handleDelete = async () => {
@@ -116,7 +112,7 @@ export function DbBrowser() {
             if (!r.ok) throw new Error(await r.text())
 
             setDeleteConfirm(null)
-            loadTables() // Refresh UI
+            loadData() // Refresh current view
         } catch (e) {
             setError(e instanceof Error ? e.message : "Failed to delete row")
         } finally {
@@ -130,8 +126,7 @@ export function DbBrowser() {
         // Format columns ending in _timestamp or exactly 'created_at' if it's a number
         if (col.endsWith("_timestamp") || col === "created_at") {
             const num = Number(val)
-            if (!isNaN(num) && num > 1000000000) { // Basic sanity check for Unix timestamp
-                // Check if it's seconds or milliseconds
+            if (!isNaN(num) && num > 1000000000) {
                 const ms = num < 10000000000 ? num * 1000 : num
                 return new Date(ms).toLocaleString(undefined, {
                     year: 'numeric',
