@@ -1,7 +1,7 @@
 /**
  * Graph data for visualization: accounts and edges (relations + connected_accounts).
  */
-import db from "./db.js";
+import db from "./db/db.js";
 
 /**
  * List accounts with optional search and platform filter.
@@ -26,7 +26,7 @@ export function getAccounts(opts = {}) {
 /**
  * Nodes and edges for the graph: selected accounts + their connections.
  * @param {number[]} accountIds - focus account IDs
- * @param {{ platform?: string, linkType?: string }} filters - optional filters for edges
+ * @param {{ platform?: string, linkType?: string, relationDirection?: 'followers'|'following'|'both' }} filters - optional filters
  */
 export function getGraphData(accountIds, filters = {}) {
   if (!accountIds || accountIds.length === 0) {
@@ -46,7 +46,7 @@ export function getGraphData(accountIds, filters = {}) {
     UNION
     SELECT account_id_2 AS id FROM connected_accounts WHERE account_id_1 IN (${placeholders})
   `);
-  const nodeIds = [...new Set(nodeIdsStmt.all(...accountIds, ...accountIds, ...accountIds, ...accountIds).map((r) => r.id))];
+  const nodeIds = [...new Set(nodeIdsStmt.all(...accountIds, ...accountIds, ...accountIds, ...accountIds, ...accountIds).map((r) => r.id))];
   if (nodeIds.length === 0) {
     return { nodes: [], edges: [] };
   }
@@ -68,6 +68,9 @@ export function getGraphData(accountIds, filters = {}) {
     WHERE source_account_id IN (${nodePlaceholders}) AND destination_account_id IN (${nodePlaceholders})
   `).all(...nodeIds, ...nodeIds);
   if (filters.linkType && filters.linkType !== "relation") relationEdges = [];
+  const dir = filters.relationDirection || "both";
+  if (dir === "following") relationEdges = relationEdges.filter((e) => accountIds.includes(e.fromId));
+  else if (dir === "followers") relationEdges = relationEdges.filter((e) => accountIds.includes(e.toId));
   relationEdges = relationEdges.filter((e) => nodeIdSet.has(e.fromId) && nodeIdSet.has(e.toId));
 
   // Edges: connected_accounts

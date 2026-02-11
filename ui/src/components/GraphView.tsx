@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
   Box,
   Typography,
@@ -9,47 +9,58 @@ import {
   Select,
   MenuItem,
   Chip,
-  OutlinedInput,
   Alert,
   CircularProgress,
   IconButton,
   Paper,
-  useTheme
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  useTheme,
+  Fade,
+  Tooltip,
+  alpha
 } from "@mui/material"
-import { Search, ZoomIn, ZoomOut, FitScreen, Refresh } from "@mui/icons-material"
+import { Search, ZoomIn, ZoomOut, FitScreen, Download, FilterList } from "@mui/icons-material"
 import { getApiBase } from "../api"
 
 type Account = { id: number; username: string; platform: string; profile_url?: string }
-type GraphNode = Account
+type GraphNode = Account & { x: number; y: number; vx: number; vy: number; fx?: number; fy?: number }
 type GraphEdge = { from: number; to: number; type: string }
 
-const LINK_TYPES = [
-  { value: "", label: "All links" },
-  { value: "relation", label: "Follows / relation" },
-  { value: "same_person", label: "Same person" },
-  { value: "alt", label: "Alt account" },
+const TYPE_OPTIONS = [
+  { value: "", label: "All links", relationDirection: "" as const, linkType: "" },
+  { value: "followers", label: "Followers", relationDirection: "followers" as const, linkType: "relation" },
+  { value: "following", label: "Following", relationDirection: "following" as const, linkType: "relation" },
+  { value: "both", label: "Both", relationDirection: "both" as const, linkType: "relation" },
+  { value: "tagged_by", label: "Tagged by", relationDirection: "both" as const, linkType: "tagged_by" },
+  { value: "same_person", label: "Same person", relationDirection: "both" as const, linkType: "same_person" },
+  { value: "alt", label: "Alt account", relationDirection: "both" as const, linkType: "alt" },
 ]
 
-function layoutNodes(nodes: GraphNode[], edges: GraphEdge[]): Map<number, { x: number; y: number }> {
-  const pos = new Map<number, { x: number; y: number }>()
-  const centerX = 400
-  const centerY = 300
-  const radius = 220
-  nodes.forEach((n, i) => {
-    const angle = (2 * Math.PI * i) / Math.max(nodes.length, 1)
-    pos.set(n.id, {
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle),
-    })
+async function scrapeInstagramAndSave(username: string): Promise<{ account?: { username: string; id: number }; error?: string }> {
+  const base = await getApiBase()
+  const r = await fetch(`${base}/api/scrape/instagram`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
   })
-  return pos
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ error: r.statusText }))
+    throw new Error((err as { error?: string }).error || "Scrape failed")
+  }
+  return r.json()
 }
+
+type Adapter = { platform: string; baseUrl?: string; loginUrl?: string }
 
 export function GraphView() {
   const theme = useTheme()
-  const [search, setSearch] = useState("")
+  const [usernameInput, setUsernameInput] = useState("")
   const [platformFilter, setPlatformFilter] = useState("")
-  const [linkTypeFilter, setLinkTypeFilter] = useState("")
+  const [typeFilter, setTypeFilter] = useState("")
+  const [adapters, setAdapters] = useState<Adapter[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [nodes, setNodes] = useState<GraphNode[]>([])
@@ -63,13 +74,38 @@ export function GraphView() {
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
 
+  const [openScrape, setOpenScrape] = useState(false)
+  const [scrapeUsername, setScrapeUsername] = useState("")
+  const [scraping, setScraping] = useState(false)
+  const [scrapeMsg, setScrapeMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+  const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null)
+  const [draggedNodeId, setDraggedNodeId] = useState<number | null>(null)
+  const [showFilters, setShowFilters] = useState(true)
+
+  const requestRef = useRef<number>(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const fetchAdapters = useCallback(async () => {
+    try {
+      const base = await getApiBase()
+      const r = await fetch(`${base}/api/adapters`)
+      if (r.ok) {
+        const list = (await r.json()) as Adapter[]
+        setAdapters(list)
+      }
+    } catch {
+      // non-fatal
+    }
+  }, [])
+
   const fetchAccounts = useCallback(async () => {
     setLoadingAccounts(true)
     setError(null)
     try {
       const base = await getApiBase()
       const params = new URLSearchParams()
-      if (search.trim()) params.set("q", search.trim())
+      if (usernameInput.trim()) params.set("q", usernameInput.trim())
       if (platformFilter) params.set("platform", platformFilter)
       const r = await fetch(`${base}/api/accounts?${params}`)
       if (!r.ok) throw new Error(await r.text())
@@ -80,7 +116,7 @@ export function GraphView() {
     } finally {
       setLoadingAccounts(false)
     }
-  }, [search, platformFilter])
+  }, [usernameInput, platformFilter])
 
   const fetchGraph = useCallback(async () => {
     if (selectedIds.length === 0) {
@@ -95,47 +131,99 @@ export function GraphView() {
       const params = new URLSearchParams()
       params.set("accountIds", selectedIds.join(","))
       if (platformFilter) params.set("platform", platformFilter)
-      if (linkTypeFilter) params.set("linkType", linkTypeFilter)
+      const opt = TYPE_OPTIONS.find((o) => o.value === typeFilter)
+      if (opt?.linkType) params.set("linkType", opt.linkType)
+      if (opt?.relationDirection) params.set("relationDirection", opt.relationDirection)
       const r = await fetch(`${base}/api/graph?${params}`)
       if (!r.ok) throw new Error(await r.text())
-      const data = (await r.json()) as { nodes: GraphNode[]; edges: GraphEdge[] }
-      setNodes(data.nodes)
+      const data = (await r.json()) as { nodes: Account[]; edges: GraphEdge[] }
+
+      setNodes((prevNodes) => {
+        const nodeMap = new Map(prevNodes.map(n => [n.id, n]))
+        return data.nodes.map((n, i) => {
+          const existing = nodeMap.get(n.id)
+          if (existing) return { ...n, ...existing }
+
+          const angle = (2 * Math.PI * i) / Math.max(data.nodes.length, 1)
+          const radius = 220
+          return {
+            ...n,
+            x: 400 + radius * Math.cos(angle),
+            y: 300 + radius * Math.sin(angle),
+            vx: 0,
+            vy: 0,
+          }
+        })
+      })
       setEdges(data.edges)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load graph")
     } finally {
       setLoadingGraph(false)
     }
-  }, [selectedIds, platformFilter, linkTypeFilter])
+  }, [selectedIds, platformFilter, typeFilter])
 
-  useEffect(() => {
-    fetchAccounts()
-  }, [fetchAccounts])
+  useEffect(() => { fetchAdapters() }, [fetchAdapters])
+  useEffect(() => { fetchAccounts() }, [fetchAccounts])
+  useEffect(() => { fetchGraph() }, [fetchGraph])
 
-  useEffect(() => {
-    fetchGraph()
-  }, [fetchGraph])
-
-  const positions = useMemo(() => layoutNodes(nodes, edges), [nodes, edges])
   const platforms = useMemo(() => [...new Set(accounts.map((a) => a.platform))].sort(), [accounts])
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.25, 3))
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.25, 0.25))
-  const handleFit = () => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
+  const handleFit = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
+
+  const screenToCanvas = (sx: number, sy: number) => {
+    if (!containerRef.current) return { x: sx, y: sy }
+    const rect = containerRef.current.getBoundingClientRect()
+    // Center of the container is our origin for scale
+    const cx = rect.width / 2
+    const cy = rect.height / 2
+    return {
+      x: (sx - rect.left - cx - pan.x) / zoom + 400,
+      y: (sy - rect.top - cy - pan.y) / zoom + 300,
+    }
   }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) {
-      setIsPanning(true)
-      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+      const pos = screenToCanvas(e.clientX, e.clientY)
+      const hit = nodes.find(n => {
+        const dx = n.x - pos.x
+        const dy = n.y - pos.y
+        return Math.sqrt(dx * dx + dy * dy) < 20 // radius + slop
+      })
+
+      if (hit) {
+        setDraggedNodeId(hit.id)
+      } else {
+        setIsPanning(true)
+        setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+      }
     }
   }
+
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isPanning) setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y })
+    if (isPanning) {
+      setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y })
+    } else if (draggedNodeId !== null) {
+      const pos = screenToCanvas(e.clientX, e.clientY)
+      setNodes(prevNodes => prevNodes.map(n =>
+        n.id === draggedNodeId ? { ...n, x: pos.x, y: pos.y, vx: 0, vy: 0, fx: pos.x, fy: pos.y } : n
+      ))
+    }
   }
-  const handleMouseUp = () => setIsPanning(false)
+
+  const handleMouseUp = () => {
+    setIsPanning(false)
+    if (draggedNodeId !== null) {
+      setNodes(prevNodes => prevNodes.map(n =>
+        n.id === draggedNodeId ? { ...n, fx: undefined, fy: undefined } : n
+      ))
+      setDraggedNodeId(null)
+    }
+  }
+
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault()
     const delta = e.deltaY > 0 ? -0.1 : 0.1
@@ -148,118 +236,245 @@ export function GraphView() {
     )
   }
 
+  const handleScrape = async () => {
+    if (!scrapeUsername.trim()) return
+    setScraping(true)
+    setScrapeMsg(null)
+    try {
+      const data = await scrapeInstagramAndSave(scrapeUsername.trim())
+      setScrapeMsg({ type: "success", text: `Scraped ${data.account?.username ?? scrapeUsername} successfully` })
+      setScrapeUsername("")
+      fetchAccounts()
+    } catch (e) {
+      setScrapeMsg({ type: "error", text: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setScraping(false)
+    }
+  }
+
+  // --- Physics Simulation ---
+  useEffect(() => {
+    if (nodes.length === 0) return
+
+    const animate = () => {
+      setNodes((currentNodes) => {
+        if (currentNodes.length === 0) return []
+
+        const newNodes = currentNodes.map(n => ({ ...n }))
+        const centerX = 400
+        const centerY = 300
+        const repulsion = 1.0 // Increased repulsion
+        const spring = 0.04   // Slightly softer springs
+        const centering = 0.015
+        const friction = 0.85 // More friction to avoid jitter
+
+        // 1. Repulsion between all nodes
+        for (let i = 0; i < newNodes.length; i++) {
+          for (let j = i + 1; j < newNodes.length; j++) {
+            const dx = newNodes[j].x - newNodes[i].x
+            const dy = newNodes[j].y - newNodes[i].y
+            const distSq = dx * dx + dy * dy || 1
+            const dist = Math.sqrt(distSq)
+            const force = repulsion * 20000 / distSq // stronger inversely proportional
+            const fx = (dx / dist) * force
+            const fy = (dy / dist) * force
+            newNodes[i].vx -= fx
+            newNodes[i].vy -= fy
+            newNodes[j].vx += fx
+            newNodes[j].vy += fy
+          }
+        }
+
+        // 2. Spring attraction for edges
+        edges.forEach((edge) => {
+          const from = newNodes.find((n) => n.id === edge.from)
+          const to = newNodes.find((n) => n.id === edge.to)
+          if (from && to) {
+            const dx = to.x - from.x
+            const dy = to.y - from.y
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1
+            const force = (dist - 150) * spring // Target distance 150
+            const fx = (dx / dist) * force
+            const fy = (dy / dist) * force
+            from.vx += fx
+            from.vy += fy
+            to.vx -= fx
+            to.vy -= fy
+          }
+        })
+
+        // 3. Centering pull and apply movement
+        newNodes.forEach((n) => {
+          if (n.fx !== undefined && n.fy !== undefined) {
+            n.x = n.fx
+            n.y = n.fy
+            n.vx = 0
+            n.vy = 0
+          } else {
+            n.vx += (centerX - n.x) * centering
+            n.vy += (centerY - n.y) * centering
+            n.vx *= friction
+            n.vy *= friction
+            n.x += n.vx
+            n.y += n.vy
+          }
+        })
+
+        return newNodes
+      })
+      requestRef.current = requestAnimationFrame(animate)
+    }
+
+    requestRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(requestRef.current)
+  }, [edges.length])
+
+  const highlightedConnections = useMemo(() => {
+    if (!hoveredNodeId) return new Set<number>()
+    const cons = new Set<number>([hoveredNodeId])
+    edges.forEach(e => {
+      if (e.from === hoveredNodeId) cons.add(e.to)
+      if (e.to === hoveredNodeId) cons.add(e.from)
+    })
+    return cons
+  }, [hoveredNodeId, edges])
+
   return (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {/* Toolbar: search, filters, account selector, zoom */}
-      <Paper
-        variant="outlined"
-        sx={{
-          p: 2,
-          borderRadius: 0,
-          borderLeft: 0,
-          borderRight: 0,
-          borderTop: 0,
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 2,
-          alignItems: "center",
-        }}
-      >
-        <TextField
-          size="small"
-          placeholder="Search accounts..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && fetchAccounts()}
-          sx={{ minWidth: 200 }}
-          InputProps={{ startAdornment: <Search sx={{ mr: 1, color: "action.active" }} /> }}
-        />
-        <Button variant="outlined" size="small" onClick={fetchAccounts} startIcon={<Refresh />}>
-          Search
-        </Button>
-
-        <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel>Platform</InputLabel>
-          <Select
-            value={platformFilter}
-            label="Platform"
-            onChange={(e) => setPlatformFilter(e.target.value)}
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+      {/* Floating Toolbar Controls */}
+      <Box sx={{ position: "absolute", top: 16, left: 16, zIndex: 100, display: "flex", flexDirection: "column", gap: 1, pointerEvents: "none" }}>
+        <Paper
+          elevation={3}
+          sx={{
+            p: 1.5,
+            borderRadius: 3,
+            display: "flex",
+            gap: 1.5,
+            alignItems: "center",
+            pointerEvents: "auto",
+            backdropFilter: "blur(8px)",
+            bgcolor: alpha(theme.palette.background.paper, 0.8),
+            border: `1px solid ${theme.palette.divider}`
+          }}
+        >
+          <IconButton onClick={() => setShowFilters(!showFilters)} color={showFilters ? "primary" : "default"}>
+            <FilterList />
+          </IconButton>
+          <TextField
+            size="small"
+            placeholder="Search username…"
+            value={usernameInput}
+            onChange={(e) => setUsernameInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && fetchAccounts()}
+            sx={{ width: 140, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            InputProps={{ startAdornment: <Search sx={{ mr: 0.5, color: "action.active", fontSize: 18 }} /> }}
+          />
+          <Button
+            variant="contained"
+            size="small"
+            onClick={fetchAccounts}
+            disabled={loadingAccounts}
+            sx={{ borderRadius: 2, px: 2, minWidth: 80 }}
           >
-            <MenuItem value="">All</MenuItem>
-            {platforms.map((p) => (
-              <MenuItem key={p} value={p}>{p}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel>Link type</InputLabel>
-          <Select
-            value={linkTypeFilter}
-            label="Link type"
-            onChange={(e) => setLinkTypeFilter(e.target.value)}
+            {loadingAccounts ? <CircularProgress size={16} color="inherit" /> : "Search"}
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            color="secondary"
+            startIcon={<Download />}
+            onClick={() => { setOpenScrape(true); setScrapeMsg(null) }}
+            sx={{ borderRadius: 2, px: 2 }}
           >
-            {LINK_TYPES.map((opt) => (
-              <MenuItem key={opt.value || "all"} value={opt.value}>{opt.label}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+            Scrape
+          </Button>
+        </Paper>
 
-        <FormControl size="small" sx={{ minWidth: 260 }}>
-          <InputLabel>Accounts to show connections of</InputLabel>
-          <Select
-            multiple
-            value={selectedIds}
-            onChange={(e) => setSelectedIds(Array.from(e.target.value as number[]))}
-            input={<OutlinedInput label="Accounts to show connections of" />}
-            renderValue={(ids) => (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                {ids.slice(0, 3).map((id) => {
-                  const a = accounts.find((x) => x.id === id)
-                  return <Chip key={id} size="small" label={a ? `${a.username}@${a.platform}` : id} />
-                })}
-                {ids.length > 3 && <Chip size="small" label={`+${ids.length - 3}`} />}
-              </Box>
-            )}
+        <Fade in={showFilters}>
+          <Paper
+            elevation={3}
+            sx={{
+              p: 1.5,
+              borderRadius: 3,
+              display: "flex",
+              gap: 1.5,
+              pointerEvents: "auto",
+              backdropFilter: "blur(8px)",
+              bgcolor: alpha(theme.palette.background.paper, 0.8),
+              border: `1px solid ${theme.palette.divider}`
+            }}
           >
+            <FormControl size="small" sx={{ minWidth: 100 }}>
+              <InputLabel>Platform</InputLabel>
+              <Select value={platformFilter} label="Platform" onChange={(e) => setPlatformFilter(e.target.value)} sx={{ borderRadius: 2 }}>
+                <MenuItem value="">All</MenuItem>
+                {adapters.length > 0 ? adapters.map(a => <MenuItem key={a.platform} value={a.platform}>{a.platform}</MenuItem>) : platforms.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 100 }}>
+              <InputLabel>Type</InputLabel>
+              <Select value={typeFilter} label="Type" onChange={(e) => setTypeFilter(e.target.value)} sx={{ borderRadius: 2 }}>
+                {TYPE_OPTIONS.map(opt => <MenuItem key={opt.value || "all"} value={opt.value}>{opt.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </Paper>
+        </Fade>
+      </Box>
+
+      {/* Floating Selection Row */}
+      <Box sx={{ position: "absolute", bottom: 16, left: 16, right: 80, zIndex: 100, pointerEvents: "none" }}>
+        {accounts.length > 0 && (
+          <Paper
+            elevation={3}
+            sx={{
+              p: 1,
+              borderRadius: 3,
+              display: "flex",
+              flexWrap: "nowrap",
+              gap: 0.5,
+              alignItems: "center",
+              pointerEvents: "auto",
+              overflowX: "auto",
+              backdropFilter: "blur(8px)",
+              bgcolor: alpha(theme.palette.background.paper, 0.8),
+              border: `1px solid ${theme.palette.divider}`,
+              maxWidth: "100%"
+            }}
+          >
+            <Typography variant="caption" sx={{ px: 1, flexShrink: 0, fontWeight: 700 }}>Toggle:</Typography>
             {accounts.map((a) => (
-              <MenuItem key={a.id} value={a.id}>
-                {a.username} ({a.platform})
-              </MenuItem>
+              <Chip
+                key={a.id}
+                size="small"
+                label={a.username}
+                color={selectedIds.includes(a.id) ? "primary" : "default"}
+                variant={selectedIds.includes(a.id) ? "filled" : "outlined"}
+                onClick={() => toggleAccount(a.id)}
+                sx={{ borderRadius: 1.5, flexShrink: 0 }}
+              />
             ))}
-          </Select>
-        </FormControl>
+          </Paper>
+        )}
+      </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, ml: "auto" }}>
-          <IconButton size="small" onClick={handleZoomOut} title="Zoom out">
-            <ZoomOut />
-          </IconButton>
-          <Typography variant="caption" sx={{ minWidth: 36, textAlign: "center" }}>
-            {Math.round(zoom * 100)}%
-          </Typography>
-          <IconButton size="small" onClick={handleZoomIn} title="Zoom in">
-            <ZoomIn />
-          </IconButton>
-          <IconButton size="small" onClick={handleFit} title="Reset view">
-            <FitScreen />
-          </IconButton>
-        </Box>
-      </Paper>
-
+      {/* Floating Error Alert */}
       {error && (
-        <Alert severity="error" onClose={() => setError(null)} sx={{ m: 2 }}>
-          {error}
-        </Alert>
+        <Box sx={{ position: "absolute", top: 100, left: "50%", transform: "translateX(-50%)", zIndex: 1000, width: "auto", maxWidth: "80%" }}>
+          <Alert severity="error" onClose={() => setError(null)} variant="filled" sx={{ borderRadius: 3, boxShadow: 6 }}>
+            {error}
+          </Alert>
+        </Box>
       )}
 
-      {/* Graph canvas */}
+      {/* Graph Canvas Wrapper */}
       <Box
+        ref={containerRef}
         sx={{
           flex: 1,
           overflow: "hidden",
           position: "relative",
-          bgcolor: "background.default",
-          cursor: isPanning ? "grabbing" : "grab",
+          bgcolor: theme.palette.background.default,
+          cursor: isPanning ? "grabbing" : (draggedNodeId ? "grabbing" : "grab"),
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -267,6 +482,29 @@ export function GraphView() {
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
+        {/* Floating zoom controls */}
+        <Paper
+          elevation={4}
+          sx={{
+            position: "absolute",
+            bottom: 16,
+            right: 16,
+            zIndex: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 0.5,
+            p: 0.5,
+            borderRadius: 3,
+            bgcolor: "primary.main",
+            color: "white"
+          }}
+        >
+          <IconButton size="small" onClick={handleZoomIn} sx={{ color: "white" }}><ZoomIn fontSize="small" /></IconButton>
+          <Typography variant="caption" sx={{ textAlign: "center", fontWeight: 900, color: "white" }}>{Math.round(zoom * 100)}%</Typography>
+          <IconButton size="small" onClick={handleZoomOut} sx={{ color: "white" }}><ZoomOut fontSize="small" /></IconButton>
+          <IconButton size="small" onClick={handleFit} sx={{ color: "white" }}><FitScreen fontSize="small" /></IconButton>
+        </Paper>
+
         <Box
           sx={{
             position: "absolute",
@@ -284,93 +522,152 @@ export function GraphView() {
           {loadingGraph && selectedIds.length > 0 ? (
             <CircularProgress />
           ) : nodes.length === 0 && selectedIds.length > 0 ? (
-            <Typography color="text.secondary">No connections found for selected accounts.</Typography>
+            <Typography color="text.secondary">No connections found.</Typography>
           ) : nodes.length === 0 ? (
-            <Typography color="text.secondary">
-              Search accounts above and select one or more to show their connections.
-            </Typography>
+            <Box sx={{ textAlign: "center", opacity: 0.5 }}>
+              <Search sx={{ fontSize: 64, mb: 2 }} />
+              <Typography variant="h6">Search and select accounts to visualize</Typography>
+            </Box>
           ) : (
-            <svg
-              width={800}
-              height={600}
-              style={{ overflow: "visible" }}
-            >
-              <defs>
-                <marker
-                  id="arrow"
-                  markerWidth={8}
-                  markerHeight={8}
-                  refX={6}
-                  refY={4}
-                  orient="auto"
-                >
-                  <path d="M0,0 L8,4 L0,8 z" fill={theme.palette.text.secondary} />
-                </marker>
-              </defs>
-              {edges.map((e, i) => {
-                const fromPos = positions.get(e.from)
-                const toPos = positions.get(e.to)
-                if (!fromPos || !toPos) return null
-                const isRelation = e.type === "relation"
-                return (
-                  <line
-                    key={`${e.from}-${e.to}-${i}`}
-                    x1={fromPos.x}
-                    y1={fromPos.y}
-                    x2={toPos.x}
-                    y2={toPos.y}
-                    stroke={theme.palette.text.secondary}
-                    strokeOpacity={0.5}
-                    strokeWidth={isRelation ? 1.5 : 1}
-                    strokeDasharray={isRelation ? undefined : "4 2"}
-                    markerEnd={isRelation ? "url(#arrow)" : undefined}
-                  />
-                )
-              })}
-              {nodes.map((n) => {
-                const pos = positions.get(n.id)
-                if (!pos) return null
-                const selected = selectedIds.includes(n.id)
-                return (
-                  <g
-                    key={n.id}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => toggleAccount(n.id)}
-                  >
-                    <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={selected ? 14 : 10}
-                      fill={theme.palette.primary.main}
-                      fillOpacity={selected ? 0.9 : 0.6}
-                      stroke={theme.palette.primary.dark}
-                      strokeWidth={selected ? 2 : 1}
-                    />
-                    <text
-                      x={pos.x}
-                      y={pos.y + 24}
-                      textAnchor="middle"
-                      fontSize={11}
-                      fill={theme.palette.text.primary}
-                    >
-                      {n.username}
-                    </text>
-                    <text
-                      x={pos.x}
-                      y={pos.y + 36}
-                      textAnchor="middle"
-                      fontSize={9}
-                      fill={theme.palette.text.secondary}
-                    >
-                      {n.platform}
-                    </text>
-                  </g>
-                )
-              })}
-            </svg>
+            <Fade in={!loadingGraph && nodes.length > 0} timeout={800}>
+              <Box>
+                <svg width={800} height={600} style={{ overflow: "visible" }}>
+                  <defs>
+                    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
+                      <feOffset dx="1" dy="1" result="offsetblur" />
+                      <feComponentTransfer>
+                        <feFuncA type="linear" slope="0.3" />
+                      </feComponentTransfer>
+                      <feMerge>
+                        <feMergeNode />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                    <marker id="arrow" markerWidth={10} markerHeight={10} refX={22} refY={5} orient="auto">
+                      <path d="M0,0 L10,5 L0,10 z" fill={theme.palette.text.secondary} opacity={0.5} />
+                    </marker>
+                    <marker id="arrow-high" markerWidth={10} markerHeight={10} refX={22} refY={5} orient="auto">
+                      <path d="M0,0 L10,5 L0,10 z" fill={theme.palette.primary.main} />
+                    </marker>
+                  </defs>
+
+                  {/* Edges */}
+                  {edges.map((e, i) => {
+                    const fromNode = nodes.find(n => n.id === e.from)
+                    const toNode = nodes.find(n => n.id === e.to)
+                    if (!fromNode || !toNode) return null
+                    const isHigh = hoveredNodeId && (e.from === hoveredNodeId || e.to === hoveredNodeId)
+                    const isRelation = e.type === "relation"
+                    return (
+                      <line
+                        key={`${e.from}-${e.to}-${i}`}
+                        x1={fromNode.x} y1={fromNode.y}
+                        x2={toNode.x} y2={toNode.y}
+                        stroke={isHigh ? theme.palette.primary.main : theme.palette.text.secondary}
+                        strokeOpacity={isHigh ? 1 : (hoveredNodeId ? 0.1 : 0.4)}
+                        strokeWidth={isHigh ? 2.5 : 1.2}
+                        strokeDasharray={isRelation ? undefined : "5 3"}
+                        markerEnd={isRelation ? (isHigh ? "url(#arrow-high)" : "url(#arrow)") : undefined}
+                        style={{ transition: "stroke 0.2s, stroke-opacity 0.2s, stroke-width 0.2s" }}
+                      />
+                    )
+                  })}
+
+                  {/* Nodes */}
+                  {nodes.map((n) => {
+                    const isSelected = selectedIds.includes(n.id)
+                    const isHovered = hoveredNodeId === n.id
+                    const isConnected = hoveredNodeId && highlightedConnections.has(n.id)
+                    const opacity = hoveredNodeId ? (isConnected ? 1 : 0.3) : 1
+
+                    return (
+                      <Tooltip
+                        key={n.id}
+                        title={`${n.username} (@${n.platform})`}
+                        arrow
+                        enterDelay={500}
+                        placement="top"
+                      >
+                        <g
+                          style={{ cursor: "pointer", transition: "opacity 0.2s" }}
+                          onMouseEnter={() => setHoveredNodeId(n.id)}
+                          onMouseLeave={() => setHoveredNodeId(null)}
+                          onClick={() => toggleAccount(n.id)}
+                          opacity={opacity}
+                          filter="url(#shadow)"
+                        >
+                          <circle
+                            cx={n.x} cy={n.y}
+                            r={isHovered ? 16 : (isSelected ? 14 : 12)}
+                            fill={isHovered ? theme.palette.primary.light : (isSelected ? theme.palette.primary.main : "#fff")}
+                            stroke={theme.palette.primary.main}
+                            strokeWidth={isSelected || isHovered ? 2.5 : 2}
+                            style={{ transition: "r 0.2s, fill 0.2s, stroke-width 0.2s" }}
+                          />
+                          <text
+                            x={n.x} y={n.y + (isHovered ? 28 : 24)}
+                            textAnchor="middle"
+                            fontSize={isHovered ? 12 : 11}
+                            fontWeight={isHovered || isSelected ? 700 : 400}
+                            fill={theme.palette.text.primary}
+                            style={{ transition: "font-size 0.2s, font-weight 0.2s" }}
+                          >
+                            {n.username}
+                          </text>
+                          <text
+                            x={n.x} y={n.y + (isHovered ? 40 : 36)}
+                            textAnchor="middle"
+                            fontSize={isHovered ? 10 : 9}
+                            fill={theme.palette.text.secondary}
+                            style={{ pointerEvents: "none" }}
+                          >
+                            {n.platform}
+                          </text>
+                        </g>
+                      </Tooltip>
+                    )
+                  })}
+                </svg>
+              </Box>
+            </Fade>
           )}
         </Box>
       </Box>
+
+      {/* Scrape dialog */}
+      <Dialog open={openScrape} onClose={() => !scraping && setOpenScrape(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Scrape Instagram</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            label="Username"
+            placeholder="e.g. johndoe"
+            fullWidth
+            margin="normal"
+            value={scrapeUsername}
+            onChange={e => setScrapeUsername(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleScrape()}
+            disabled={scraping}
+          />
+          {scrapeMsg && (
+            <Alert severity={scrapeMsg.type} sx={{ mt: 1 }} onClose={() => setScrapeMsg(null)}>
+              {scrapeMsg.text}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenScrape(false)} disabled={scraping}>Cancel</Button>
+          <Button
+            onClick={handleScrape}
+            variant="contained"
+            disabled={scraping || !scrapeUsername.trim()}
+            startIcon={scraping ? <CircularProgress size={18} /> : <Download />}
+          >
+            {scraping ? "Scraping…" : "Scrape"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

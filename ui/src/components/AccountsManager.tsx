@@ -48,6 +48,7 @@ async function scrape(options: { url: string; session: string; interactive: bool
     return r.json()
 }
 
+
 function hasSessionForPlatform(sessions: string[], platformId: string): boolean {
     return sessions.some(s => s.toLowerCase().includes(platformId))
 }
@@ -60,6 +61,8 @@ export function AccountsManager() {
     const [loginUrl, setLoginUrl] = useState("")
     const [selectedPlatformId, setSelectedPlatformId] = useState("")
     const [isLoggingIn, setIsLoggingIn] = useState(false)
+
+
 
     const loadSessions = async () => {
         setLoading(true)
@@ -86,6 +89,8 @@ export function AccountsManager() {
             setOpenAdd(true)
         }
     }
+
+
 
     const handleLogin = async () => {
         if (!newSessionName.trim() || !loginUrl.trim()) return
@@ -114,7 +119,7 @@ export function AccountsManager() {
             <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
                 <Typography variant="h5" sx={{ flexGrow: 1 }}>Accounts</Typography>
                 <Button variant="outlined" startIcon={<Add />} onClick={() => setOpenAdd(true)}>
-                    Add account (custom)
+                    Add account
                 </Button>
                 <IconButton onClick={loadSessions} sx={{ ml: 1 }} aria-label="Refresh"><Refresh /></IconButton>
             </Box>
@@ -122,6 +127,7 @@ export function AccountsManager() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                 Log in to social platforms to save your session. Each card uses the statically defined list of platforms.
             </Typography>
+
 
             {loading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>

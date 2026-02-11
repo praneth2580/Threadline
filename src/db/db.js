@@ -45,4 +45,40 @@ db.exec(`
   );
 `);
 
+/**
+ * List table names for the DB browser (user tables only).
+ * @returns {string[]}
+ */
+export function getTableNames() {
+  const rows = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+  ).all();
+  return rows.map((r) => r.name);
+}
+
+/**
+ * Query a table with optional search across all columns.
+ * @param {string} tableName - must be one of getTableNames()
+ * @param {string} [search] - optional search term (LIKE %term% on each column)
+ * @returns {{ columns: string[], rows: Record<string, unknown>[] }}
+ */
+export function queryTable(tableName, search) {
+  const allowed = getTableNames();
+  if (!allowed.includes(tableName)) {
+    throw new Error("Invalid table name");
+  }
+  const info = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const columns = info.map((c) => c.name);
+  const term = typeof search === "string" && search.trim() ? `%${search.trim()}%` : null;
+  let rows;
+  if (term) {
+    const conditions = columns.map((col) => `CAST(${col} AS TEXT) LIKE ?`).join(" OR ");
+    const stmt = db.prepare(`SELECT * FROM ${tableName} WHERE ${conditions}`);
+    rows = stmt.all(...columns.map(() => term));
+  } else {
+    rows = db.prepare(`SELECT * FROM ${tableName}`).all();
+  }
+  return { columns, rows };
+}
+
 export default db;

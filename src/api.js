@@ -11,6 +11,8 @@
 import * as scraper from "./scraper/main.js";
 import { SCRAPER_ADAPTERS } from "./constants/adapters.js";
 import { getAccounts, getGraphData } from "./graph-data.js";
+import { getTableNames, queryTable } from "./db/db.js";
+import { scrapeInstagramAndSave } from "./db/instagram-db.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -101,9 +103,86 @@ export function createApiHandler(opts = {}) {
             .filter((n) => !Number.isNaN(n));
           const platform = url.searchParams.get("platform") || "";
           const linkType = url.searchParams.get("linkType") || "";
+          const relationDirection = url.searchParams.get("relationDirection") || "";
           const data = getGraphData(accountIds, {
             platform: platform || undefined,
             linkType: linkType || undefined,
+            relationDirection: ["followers", "following", "both"].includes(relationDirection) ? relationDirection : undefined,
+          });
+          sendJson(res, 200, data);
+        } catch (e) {
+          sendJson(res, 500, { error: e.message });
+        }
+      },
+
+      "GET /api/db/tables": async () => {
+        try {
+          const list = getTableNames();
+          sendJson(res, 200, list);
+        } catch (e) {
+          sendJson(res, 500, { error: e.message });
+        }
+      },
+
+      "GET /api/db/query": async () => {
+        try {
+          const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+          const table = url.searchParams.get("table") || "";
+          const search = url.searchParams.get("search") || "";
+          if (!table) {
+            sendJson(res, 400, { error: "table is required" });
+            return;
+          }
+          const data = queryTable(table, search || undefined);
+          sendJson(res, 200, data);
+        } catch (e) {
+          sendJson(res, 500, { error: e.message });
+        }
+      },
+
+      "GET /api/db/instgram": async () => {
+        try {
+          const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+          const table = url.searchParams.get("table") || "";
+          const search = url.searchParams.get("search") || "";
+          if (!table) {
+            sendJson(res, 400, { error: "table is required" });
+            return;
+          }
+          const data = scrapeInstagramAndSave({
+            username,
+            session: body.session || undefined,
+            includeFollowers: body.includeFollowers === true,
+            includeFollowing: body.includeFollowing === true,
+            limit: typeof body.limit === "number" ? body.limit : 50,
+          });
+          sendJson(res, 200, data);
+        } catch (e) {
+          sendJson(res, 500, { error: e.message });
+        }
+      },
+
+      
+      "POST /api/scrape/instagram": async () => {
+        let body;
+        try {
+          body = await readJson(req);
+        } catch (e) {
+          sendJson(res, 400, { error: "Invalid JSON" });
+          return;
+        }
+        const username = body?.username?.trim?.() || body?.user?.trim?.();
+        if (!username) {
+          sendJson(res, 400, { error: "username is required" });
+          return;
+        }
+        try {
+          const data = await scrapeInstagramAndSave({
+            username,
+            session: body.session || undefined,
+            includeFollowers: body.includeFollowers === true,
+            includeFollowing: body.includeFollowing === true,
+            limit: typeof body.limit === "number" ? body.limit : 50,
           });
           sendJson(res, 200, data);
         } catch (e) {
