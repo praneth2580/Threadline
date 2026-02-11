@@ -310,7 +310,7 @@ export async function extractFromNetwork(page, config) {
         if (body == null) return;
         const value = jsonPath ? getByPath(body, jsonPath) : body;
         if (value !== undefined) results.push(value);
-      } catch (_) {}
+      } catch (_) { }
     };
     page.on("response", onResponse);
     const t = setTimeout(() => {
@@ -344,7 +344,7 @@ export async function waitForApiResponse(page, config) {
         if (body == null) return;
         const value = jsonPath ? getByPath(body, jsonPath) : body;
         if (value !== undefined) done(value);
-      } catch (_) {}
+      } catch (_) { }
     };
     page.on("response", onResponse);
     setTimeout(() => done(null), timeout);
@@ -406,7 +406,7 @@ export function getSessions() {
     try {
       const data = JSON.parse(readFileSync(SESSIONS_FILE, "utf8"));
       if (Array.isArray(data.sessions)) data.sessions.forEach((s) => list.add(s));
-    } catch (_) {}
+    } catch (_) { }
   }
   if (existsSync(PROFILES_DIR)) {
     readdirSync(PROFILES_DIR, { withFileTypes: true })
@@ -451,7 +451,8 @@ export async function scrapeWithSession(url, options = {}) {
   if (!options.session) return scrapeUrl(url, { selector: options.selector });
   const profilePath = join(PROFILES_DIR, options.session);
   if (!existsSync(profilePath)) return scrapeUrl(url, { selector: options.selector });
-  const browser = await getChromium().launchPersistentContext(profilePath, { headless: true });
+  const headless = process.env.SCRAPER_HEADLESS !== "false";
+  const browser = await getChromium().launchPersistentContext(profilePath, { headless });
   let html;
   try {
     const page = browser.pages()[0] || (await browser.newPage());

@@ -74,10 +74,9 @@ export function GraphView() {
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
 
-  const [openScrape, setOpenScrape] = useState(false)
-  const [scrapeUsername, setScrapeUsername] = useState("")
   const [scraping, setScraping] = useState(false)
   const [scrapeMsg, setScrapeMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [openConfirm, setOpenConfirm] = useState(false)
 
   const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null)
   const [draggedNodeId, setDraggedNodeId] = useState<number | null>(null)
@@ -236,19 +235,41 @@ export function GraphView() {
     )
   }
 
-  const handleScrape = async () => {
-    if (!scrapeUsername.trim()) return
+  const handleScrape = async (forceUser?: string) => {
+    const target = forceUser || usernameInput.trim()
+    if (!target) return
+
     setScraping(true)
     setScrapeMsg(null)
+    setOpenConfirm(false)
+
     try {
-      const data = await scrapeInstagramAndSave(scrapeUsername.trim())
-      setScrapeMsg({ type: "success", text: `Scraped ${data.account?.username ?? scrapeUsername} successfully` })
-      setScrapeUsername("")
+      // Currently backend only supports Instagram specialized scrape+save
+      // If platform is something else, we might need a more generic approach later
+      const data = await scrapeInstagramAndSave(target)
+      setScrapeMsg({ type: "success", text: `Scraped ${data.account?.username ?? target} successfully` })
       fetchAccounts()
     } catch (e) {
       setScrapeMsg({ type: "error", text: e instanceof Error ? e.message : String(e) })
     } finally {
       setScraping(false)
+    }
+  }
+
+  const handleScrapeAction = () => {
+    const raw = usernameInput.trim()
+    if (!raw) return
+
+    // Check if account already exists in current list
+    const existing = accounts.find(a =>
+      a.username.toLowerCase() === raw.toLowerCase() &&
+      (platformFilter ? a.platform === platformFilter : true)
+    )
+
+    if (existing) {
+      setOpenConfirm(true)
+    } else {
+      handleScrape(raw)
     }
   }
 
@@ -382,11 +403,12 @@ export function GraphView() {
             variant="contained"
             size="small"
             color="secondary"
-            startIcon={<Download />}
-            onClick={() => { setOpenScrape(true); setScrapeMsg(null) }}
+            startIcon={scraping ? <CircularProgress size={16} color="inherit" /> : <Download />}
+            onClick={handleScrapeAction}
+            disabled={scraping || !usernameInput.trim()}
             sx={{ borderRadius: 2, px: 2 }}
           >
-            Scrape
+            {scraping ? "Scraping…" : "Scrape"}
           </Button>
         </Paper>
 
@@ -426,33 +448,78 @@ export function GraphView() {
         {accounts.length > 0 && (
           <Paper
             elevation={3}
+            className="no-scrollbar"
             sx={{
-              p: 1,
-              borderRadius: 3,
+              p: 0.75,
+              borderRadius: 3.5,
               display: "flex",
               flexWrap: "nowrap",
-              gap: 0.5,
+              gap: 1,
               alignItems: "center",
               pointerEvents: "auto",
               overflowX: "auto",
-              backdropFilter: "blur(8px)",
+              backdropFilter: "blur(12px)",
               bgcolor: alpha(theme.palette.background.paper, 0.8),
               border: `1px solid ${theme.palette.divider}`,
-              maxWidth: "100%"
+              maxWidth: "100%",
+              boxShadow: `0 8px 32px 0 ${alpha(theme.palette.common.black, 0.2)}`,
             }}
           >
-            <Typography variant="caption" sx={{ px: 1, flexShrink: 0, fontWeight: 700 }}>Toggle:</Typography>
-            {accounts.map((a) => (
-              <Chip
-                key={a.id}
-                size="small"
-                label={a.username}
-                color={selectedIds.includes(a.id) ? "primary" : "default"}
-                variant={selectedIds.includes(a.id) ? "filled" : "outlined"}
-                onClick={() => toggleAccount(a.id)}
-                sx={{ borderRadius: 1.5, flexShrink: 0 }}
-              />
-            ))}
+            <Box
+              sx={{
+                position: "sticky",
+                left: -6, // Account for parent padding
+                zIndex: 10,
+                px: 2,
+                py: 1,
+                ml: -0.75,
+                my: -0.75,
+                display: "flex",
+                alignItems: "center",
+                bgcolor: alpha(theme.palette.background.paper, 0.95),
+                backdropFilter: "blur(16px)",
+                borderRight: `1px solid ${theme.palette.divider}`,
+                borderRadius: "14px 0 0 14px",
+                flexShrink: 0,
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  color: "primary.main",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                Accounts:
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", gap: 0.75, px: 1 }}>
+              {accounts.map((a) => (
+                <Chip
+                  key={a.id}
+                  size="small"
+                  label={a.username}
+                  color={selectedIds.includes(a.id) ? "primary" : "default"}
+                  variant={selectedIds.includes(a.id) ? "filled" : "outlined"}
+                  onClick={() => toggleAccount(a.id)}
+                  sx={{
+                    borderRadius: 1.5,
+                    flexShrink: 0,
+                    fontWeight: 500,
+                    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                    "&:hover": {
+                      transform: "translateY(-1px)",
+                      boxShadow: selectedIds.includes(a.id)
+                        ? `0 4px 12px ${alpha(theme.palette.primary.main, 0.4)}`
+                        : `0 4px 8px ${alpha(theme.palette.action.focus, 0.1)}`,
+                    }
+                  }}
+                />
+              ))}
+            </Box>
           </Paper>
         )}
       </Box>
@@ -635,36 +702,19 @@ export function GraphView() {
         </Box>
       </Box>
 
-      {/* Scrape dialog */}
-      <Dialog open={openScrape} onClose={() => !scraping && setOpenScrape(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Scrape Instagram</DialogTitle>
+      {/* Confirmation dialog for re-scraping */}
+      <Dialog open={openConfirm} onClose={() => setOpenConfirm(false)}>
+        <DialogTitle>Update Account?</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            label="Username"
-            placeholder="e.g. johndoe"
-            fullWidth
-            margin="normal"
-            value={scrapeUsername}
-            onChange={e => setScrapeUsername(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleScrape()}
-            disabled={scraping}
-          />
-          {scrapeMsg && (
-            <Alert severity={scrapeMsg.type} sx={{ mt: 1 }} onClose={() => setScrapeMsg(null)}>
-              {scrapeMsg.text}
-            </Alert>
-          )}
+          <Typography>
+            The account <strong>{usernameInput}</strong> already exists in your database.
+            Do you want to re-scrape it to update its connections and profile data?
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenScrape(false)} disabled={scraping}>Cancel</Button>
-          <Button
-            onClick={handleScrape}
-            variant="contained"
-            disabled={scraping || !scrapeUsername.trim()}
-            startIcon={scraping ? <CircularProgress size={18} /> : <Download />}
-          >
-            {scraping ? "Scraping…" : "Scrape"}
+          <Button onClick={() => setOpenConfirm(false)}>Cancel</Button>
+          <Button onClick={() => handleScrape()} variant="contained" color="secondary" autoFocus>
+            Update & Rescrape
           </Button>
         </DialogActions>
       </Dialog>

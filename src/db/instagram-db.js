@@ -145,7 +145,8 @@ export async function scrapeInstagramAndSave(opts = {}) {
     return { ...result, error: "Session not found" };
   }
 
-  const browser = await chromium.launchPersistentContext(profilePath, { headless: true });
+  const headless = process.env.SCRAPER_HEADLESS !== "false";
+  const browser = await chromium.launchPersistentContext(profilePath, { headless });
   try {
     const page = browser.pages()[0] || (await browser.newPage());
 
