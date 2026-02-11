@@ -81,4 +81,25 @@ export function queryTable(tableName, search) {
   return { columns, rows };
 }
 
+/**
+ * Delete a row from a table.
+ * @param {string} tableName - must be one of getTableNames()
+ * @param {string} pkName - primary key column name
+ * @param {string|number} pkValue - value of the primary key to match
+ */
+export function deleteRow(tableName, pkName, pkValue) {
+  const allowed = getTableNames();
+  if (!allowed.includes(tableName)) {
+    throw new Error("Invalid table name");
+  }
+  // Sanitize pkName (must be one of the table's columns)
+  const info = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (!info.map((c) => c.name).includes(pkName)) {
+    throw new Error("Invalid primary key column");
+  }
+
+  const stmt = db.prepare(`DELETE FROM ${tableName} WHERE ${pkName} = ?`);
+  return stmt.run(pkValue);
+}
+
 export default db;

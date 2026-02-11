@@ -11,6 +11,7 @@ import {
   withRetry,
   sleep,
 } from "./main.js";
+import { chromium } from "playwright";
 
 const BASE_URL = "https://www.instagram.com";
 
@@ -103,30 +104,69 @@ export function parseProfileFromHtml(html) {
         if (!out.profilePicUrl) out.profilePicUrl = user.profile_pic_url_hd || user.profile_pic_url || "";
         if (!out.externalUrl && user.external_url) out.externalUrl = user.external_url;
       }
-    } catch (_) {}
+    } catch (_) { }
   });
 
   return out;
 }
 
 /**
- * Scrape a public Instagram profile by username.
- * Fetches HTML then parses it; uses retry and optional delay.
+ * Scrape Instagram profile using an existing Playwright page.
+ * @param {import('playwright').Page} page
+ * @param {string} username
+ */
+export async function scrapeProfileWithPage(page, username) {
+  const u = (username || "").trim().replace(/^@/, "");
+  const url = profileUrl(u);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+
+  // Wait a bit for JS to settle
+  await sleep(1500);
+
+  const html = await page.content();
+  const profile = parseProfileFromHtml(html);
+
+  // Fallback/Enhancement: Try to get data directly from page state if parsing failed some fields
+  if (!profile.followersCount || !profile.bio) {
+    const extra = await page.evaluate(() => {
+      try {
+        const title = document.title || "";
+        const desc = document.querySelector('meta[name="description"]')?.content || "";
+        return { title, desc };
+      } catch { return {}; }
+    });
+    // Can add more specific DOM selectors here if needed
+  }
+
+  if (!profile.username) profile.username = u;
+  if (!profile.profileUrl) profile.profileUrl = url;
+
+  return profile;
+}
+
+/**
+ * Scrape a public Instagram profile by username using a browser.
  * @param {string} username - handle with or without @
- * @param {{ delayBefore?: boolean, retries?: number }} opts
+ * @param {{ delayBefore?: boolean, page?: import('playwright').Page }} opts
  */
 export async function scrapeProfile(username, opts = {}) {
   const u = (username || "").trim().replace(/^@/, "");
   if (!u) throw new Error("Username required");
 
-  const html = await withRetry(
-    () => fetchProfileHtml(u, { delayBefore: opts.delayBefore }),
-    { retries: opts.retries ?? 2, delayMs: 2000 }
-  );
-  const profile = parseProfileFromHtml(html);
-  if (!profile.username) profile.username = u;
-  if (!profile.profileUrl) profile.profileUrl = profileUrl(u);
-  return profile;
+  if (opts.page) {
+    return scrapeProfileWithPage(opts.page, u);
+  }
+
+  const headless = process.env.SCRAPER_HEADLESS !== "false";
+  const browser = await chromium.launch({ headless });
+  try {
+    const page = await browser.newPage();
+    const profile = await scrapeProfileWithPage(page, u);
+    console.log("profile: ", profile);
+    return profile;
+  } finally {
+    await browser.close();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +272,7 @@ export async function scrapeFollowersWithPage(page, username, opts = {}) {
         if (data?.edges?.length) {
           results.push(data);
         }
-      } catch (_) {}
+      } catch (_) { }
     };
     page.on("response", onResponse);
     openFollowersModal(page, username, { timeout })
@@ -294,7 +334,7 @@ export async function scrapeFollowingWithPage(page, username, opts = {}) {
         const body = await response.json().catch(() => null);
         const data = getEdgesFromGraphQLBody(body, kind);
         if (data?.edges?.length) results.push(data);
-      } catch (_) {}
+      } catch (_) { }
     };
     page.on("response", onResponse);
     openFollowingModal(page, username, { timeout })

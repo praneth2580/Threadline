@@ -11,7 +11,7 @@
 import * as scraper from "./scraper/main.js";
 import { SCRAPER_ADAPTERS } from "./constants/adapters.js";
 import { getAccounts, getGraphData } from "./graph-data.js";
-import { getTableNames, queryTable } from "./db/db.js";
+import { getTableNames, queryTable, deleteRow } from "./db/db.js";
 import { scrapeInstagramAndSave } from "./db/instagram-db.js";
 
 function sendJson(res, status, data) {
@@ -140,29 +140,26 @@ export function createApiHandler(opts = {}) {
         }
       },
 
-      "GET /api/db/instgram": async () => {
+      "DELETE /api/db/row": async () => {
         try {
-          const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
-          const table = url.searchParams.get("table") || "";
-          const search = url.searchParams.get("search") || "";
-          if (!table) {
-            sendJson(res, 400, { error: "table is required" });
+          const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+          const table = url.searchParams.get("table");
+          const pk = url.searchParams.get("pk");
+          const id = url.searchParams.get("id");
+
+          if (!table || !pk || !id) {
+            sendJson(res, 400, { error: "Missing table, pk, or id" });
             return;
           }
-          const data = scrapeInstagramAndSave({
-            username,
-            session: body.session || undefined,
-            includeFollowers: body.includeFollowers === true,
-            includeFollowing: body.includeFollowing === true,
-            limit: typeof body.limit === "number" ? body.limit : 50,
-          });
-          sendJson(res, 200, data);
+
+          deleteRow(table, pk, id);
+          sendJson(res, 200, { success: true });
         } catch (e) {
           sendJson(res, 500, { error: e.message });
         }
       },
 
-      
+
       "POST /api/scrape/instagram": async () => {
         let body;
         try {

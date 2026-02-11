@@ -83,72 +83,81 @@ export async function scrapeInstagramAndSave(opts = {}) {
   const username = (opts.username || "").trim().replace(/^@/, "");
   if (!username) throw new Error("username is required");
 
-  const limit = Math.min(Math.max(0, opts.limit || 50), 500);
-  const now = Math.floor(Date.now() / 1000);
-  let relationsAdded = 0;
-  let followersScraped = 0;
-  let followingScraped = 0;
-
-  // 1) Public profile scrape
-  let profile;
-  try {
-    profile = await instagram.scrapeProfile(username, { delayBefore: true });
-  } catch (e) {
-    return {
-      account: null,
-      profile: null,
-      relationsAdded: 0,
-      error: e.message || "Failed to scrape profile",
-    };
-  }
-
-  const profileUrl = profile.profileUrl || `https://www.instagram.com/${profile.username || username}/`;
-  const { id: mainId } = upsertAccount({
-    username: profile.username || username,
-    profile_url: profileUrl,
-  });
-
-  const accountRow = db.prepare("SELECT id, username, platform, profile_url FROM accounts WHERE id = ?").get(mainId);
-  const account = accountRow
-    ? {
-      id: accountRow.id,
-      username: accountRow.username,
-      platform: accountRow.platform,
-      profile_url: accountRow.profile_url,
-    }
-    : { id: mainId, username: profile.username || username, platform: PLATFORM, profile_url: profileUrl };
-
-  const result = {
-    account,
-    profile: {
-      username: profile.username,
-      fullName: profile.fullName,
-      bio: profile.bio,
-      followersCount: profile.followersCount,
-      followingCount: profile.followingCount,
-      profilePicUrl: profile.profilePicUrl,
-      profileUrl: profile.profileUrl,
-    },
-    relationsAdded: 0,
-  };
-
+  // 1) Browser setup (might use session or just fresh for profile)
+  const headless = process.env.SCRAPER_HEADLESS !== "false";
   const session = opts.session && opts.session.trim();
+  const profilePath = session ? join(PROFILES_DIR, session) : null;
   const includeFollowers = opts.includeFollowers === true;
   const includeFollowing = opts.includeFollowing === true;
 
-  if (!session || (!includeFollowers && !includeFollowing)) {
-    return result;
+  let browser;
+  if (profilePath && existsSync(profilePath)) {
+    browser = await chromium.launchPersistentContext(profilePath, { headless });
+  } else {
+    browser = await chromium.launch({ headless });
   }
 
-  const profilePath = join(PROFILES_DIR, session);
-  if (!existsSync(profilePath)) {
-    return { ...result, error: "Session not found" };
-  }
-
-  const headless = process.env.SCRAPER_HEADLESS !== "false";
-  const browser = await chromium.launchPersistentContext(profilePath, { headless });
   try {
-    const page = browser.pages()[0] || (await browser.newPage());
+    const page = (browser.pages && browser.pages()[0]) || (await browser.newPage());
+
+    // 2) Profile scrape (now browser-based)
+    let profile;
+    try {
+      profile = await instagram.scrapeProfile(username, { page });
+    } catch (e) {
+      return {
+        account: null,
+        profile: null,
+        relationsAdded: 0,
+        error: e.message || "Failed to scrape profile",
+      };
+    }
+
+    const profileUrl = profile.profileUrl || `https://www.instagram.com/${profile.username || username}/`;
+    const { id: mainId } = upsertAccount({
+      username: profile.username || username,
+      profile_url: profileUrl,
+    });
+
+    const accountRow = db.prepare("SELECT id, username, platform, profile_url FROM accounts WHERE id = ?").get(mainId);
+    const account = accountRow
+      ? {
+        id: accountRow.id,
+        username: accountRow.username,
+        platform: accountRow.platform,
+        profile_url: accountRow.profile_url,
+      }
+      : { id: mainId, username: profile.username || username, platform: PLATFORM, profile_url: profileUrl };
+
+    const result = {
+      account,
+      profile: {
+        username: profile.username,
+        fullName: profile.fullName,
+        bio: profile.bio,
+        followersCount: profile.followersCount,
+        followingCount: profile.followingCount,
+        profilePicUrl: profile.profilePicUrl,
+        profileUrl: profile.profileUrl,
+      },
+      relationsAdded: 0,
+    };
+
+    if (!session || (!includeFollowers && !includeFollowing)) {
+      return result;
+    }
+
+    if (!profilePath || !existsSync(profilePath)) {
+      result.error = "Session not found, connections skipped";
+      return result;
+    }
+
+    // 3) Connections (shares the same browser context/page)
+
+    const limit = Math.min(Math.max(0, opts.limit || 50), 500);
+    let relationsAdded = 0;
+    let followersScraped = 0;
+    let followingScraped = 0;
 
     if (includeFollowers) {
       try {
