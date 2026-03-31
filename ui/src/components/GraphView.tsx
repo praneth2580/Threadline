@@ -75,7 +75,7 @@ export function GraphView() {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
 
   const [scraping, setScraping] = useState(false)
-  const [scrapeMsg, setScrapeMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [_scrapeMsg, setScrapeMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [openConfirm, setOpenConfirm] = useState(false)
 
   const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null)
