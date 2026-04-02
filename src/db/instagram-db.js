@@ -3,7 +3,7 @@
  */
 import db from "./db.js";
 import * as instagram from "../scraper/instagram.js";
-import { chromium } from "playwright";
+import { getMcpClient, closeMcpClient } from "../scraper/mcp-client.js";
 import { join } from "path";
 import { existsSync } from "fs";
 import { homedir } from "os";
@@ -84,26 +84,19 @@ export async function scrapeInstagramAndSave(opts = {}) {
   if (!username) throw new Error("username is required");
 
   // 1) Browser setup (might use session or just fresh for profile)
-  const headless = process.env.SCRAPER_HEADLESS !== "false";
-  const session = opts.session && opts.session.trim();
-  const profilePath = session ? join(PROFILES_DIR, session) : null;
   const includeFollowers = opts.includeFollowers === true;
   const includeFollowing = opts.includeFollowing === true;
-
-  let browser;
-  if (profilePath && existsSync(profilePath)) {
-    browser = await chromium.launchPersistentContext(profilePath, { headless });
-  } else {
-    browser = await chromium.launch({ headless });
-  }
+  let mcpClient, mcpTransport;
 
   try {
-    const page = (browser.pages && browser.pages()[0]) || (await browser.newPage());
+    const conn = await getMcpClient();
+    mcpClient = conn.client;
+    mcpTransport = conn.transport;
 
     // 2) Profile scrape (now browser-based)
     let profile;
     try {
-      profile = await instagram.scrapeProfile(username, { page });
+      profile = await instagram.scrapeProfile(username, { mcpClient });
     } catch (e) {
       return {
         account: null,
@@ -143,14 +136,11 @@ export async function scrapeInstagramAndSave(opts = {}) {
       relationsAdded: 0,
     };
 
-    if (!session || (!includeFollowers && !includeFollowing)) {
+    if (!includeFollowers && !includeFollowing) {
       return result;
     }
 
-    if (!profilePath || !existsSync(profilePath)) {
-      result.error = "Session not found, connections skipped";
-      return result;
-    }
+    // Since we are using MCP (the user's browser), we assume they are already logged in interactively.
 
     // 3) Connections (shares the same browser context/page)
 
@@ -161,7 +151,7 @@ export async function scrapeInstagramAndSave(opts = {}) {
 
     if (includeFollowers) {
       try {
-        const { users } = await instagram.scrapeFollowersWithPage(page, username, { limit, useDomFallback: true });
+        const { users } = await instagram.scrapeFollowersWithMcp(mcpClient, username);
         followersScraped = users.length;
         for (const u of users) {
           const uname = (u.username || "").trim().replace(/^@/, "");
@@ -176,7 +166,7 @@ export async function scrapeInstagramAndSave(opts = {}) {
 
     if (includeFollowing) {
       try {
-        const { users } = await instagram.scrapeFollowingWithPage(page, username, { limit, useDomFallback: true });
+        const { users } = await instagram.scrapeFollowingWithMcp(mcpClient, username);
         followingScraped = users.length;
         for (const u of users) {
           const uname = (u.username || "").trim().replace(/^@/, "");
@@ -188,14 +178,14 @@ export async function scrapeInstagramAndSave(opts = {}) {
         result.error = (result.error ? result.error + "; " : "") + "Following: " + (e.message || "failed");
       }
     }
-  } finally {
-    await browser.close();
-  }
 
-  result.relationsAdded = relationsAdded;
-  result.followersScraped = followersScraped;
-  result.followingScraped = followingScraped;
-  return result;
+    result.relationsAdded = relationsAdded;
+    result.followersScraped = followersScraped;
+    result.followingScraped = followingScraped;
+    return result;
+  } finally {
+    if (mcpClient) await closeMcpClient(mcpClient, mcpTransport);
+  }
 }
 
 /**
