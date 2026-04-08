@@ -19,6 +19,37 @@ body {
   min-height: 100vh;
 }
 
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+.glass-panel {
+  background: rgba(26, 26, 26, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.amber-glow {
+  box-shadow: 0 0 12px rgba(242, 195, 107, 0.18);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0d0d0d;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #353534;
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   /* Internet Explorer 10+ */

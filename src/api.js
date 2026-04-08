@@ -10,9 +10,12 @@
 
 import * as scraper from "./scraper/main.js";
 import { SCRAPER_ADAPTERS } from "./constants/adapters.js";
+import { PLATFORM_IDS } from "./constants/platforms.js";
 import { getAccounts, getGraphData } from "./graph-data.js";
 import { getTableNames, queryTable, deleteRow } from "./db/db.js";
 import { scrapeInstagramAndSave } from "./db/instagram-db.js";
+import { getSelectorOverride, setSelectorOverride } from "./scraper/selector-store.js";
+import { ollamaProposeListSelector, isOllamaAvailable } from "./scraper/ollama.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -204,8 +207,12 @@ export function createApiHandler(opts = {}) {
 
         try {
           if (interactive && session) {
-            await scraper.runInteractiveScrape(url, session);
-            sendJson(res, 200, { ok: true, message: "Session saved" });
+            // Fire-and-forget: keep the API responsive while the user logs in.
+            // The Playwright window stays open until the user closes it.
+            scraper.runInteractiveScrape(url, session).catch((e) => {
+              console.error("[api] interactive scrape failed:", e);
+            });
+            sendJson(res, 200, { ok: true, message: "Browser opened for login" });
             return;
           }
 
@@ -216,6 +223,140 @@ export function createApiHandler(opts = {}) {
           sendJson(res, 200, data);
         } catch (e) {
           sendJson(res, 500, { error: e.message });
+        }
+      },
+
+      /**
+       * Self-healing scrape: frontend sends only { platform, identifier, type }.
+       * Backend:
+       * - builds URL
+       * - tries saved selector (from selector-store override, else static adapter)
+       * - if extraction fails, uses Ollama to propose a new selector
+       * - validates and persists the selector for future runs
+       */
+      "POST /api/scrape/auto": async () => {
+        let body;
+        try {
+          body = await readJson(req);
+        } catch {
+          sendJson(res, 400, { error: "Invalid JSON" });
+          return;
+        }
+
+        const platform = String(body?.platform || "").trim().toLowerCase();
+        const type = String(body?.type || "").trim().toLowerCase();
+        const identifierRaw = String(body?.identifier || body?.accountIdentifier || "").trim();
+        const identifier = identifierRaw.replace(/^@/, "");
+
+        if (!platform || !PLATFORM_IDS.includes(platform)) {
+          sendJson(res, 400, { error: "platform is required and must be a known platform id" });
+          return;
+        }
+        if (!type) {
+          sendJson(res, 400, { error: "type is required" });
+          return;
+        }
+        if (!identifier) {
+          sendJson(res, 400, { error: "identifier is required" });
+          return;
+        }
+
+        // Resolve URL (best-effort; instagram is special-cased)
+        let url = "";
+        if (platform === "instagram") {
+          if (type === "profile") url = `https://www.instagram.com/${identifier}/`;
+          else if (type === "followers") url = `https://www.instagram.com/${identifier}/followers/`;
+          else if (type === "following") url = `https://www.instagram.com/${identifier}/following/`;
+          else url = `https://www.instagram.com/${identifier}/`;
+        } else {
+          const adapter = SCRAPER_ADAPTERS.find((a) => String(a.profileUrlTemplate || "").includes(`${platform}.`));
+          const tpl = adapter?.profileUrlTemplate || `https://${platform}.com/u/{id}`;
+          url = tpl.replace("{id}", identifier);
+        }
+
+        // Pick a session if available (platform-main is the convention in Accounts UI)
+        const sessions = scraper.getSessions();
+        const session =
+          sessions.find((s) => s.toLowerCase() === `${platform}-main`) ||
+          sessions.find((s) => s.toLowerCase().startsWith(`${platform}-`)) ||
+          null;
+
+        // Determine starting selector
+        const override = getSelectorOverride(platform, type);
+        const adapterDefault = SCRAPER_ADAPTERS.find((a) => (a.baseUrl || "").includes(`${platform}.`))?.connections?.listSelector;
+        const listSelector = override?.listSelector || adapterDefault || ".user-list li, .follow-list .item, [data-testid='list-item']";
+
+        const domConfig = { listSelector, fields: { text: "" } };
+
+        const validate = (rows) =>
+          Array.isArray(rows) && rows.length > 0 && rows.some((r) => typeof r?.text === "string" && r.text.trim().length > 0);
+
+        // First attempt: saved selector
+        try {
+          const data = session
+            ? await scraper.scrapeWithSession(url, { session, strategy: "dom", dom: domConfig })
+            : await scraper.scrapeUrl(url, { strategy: "dom", dom: domConfig });
+
+          const extracted = data?.extracted || [];
+          if (validate(extracted)) {
+            sendJson(res, 200, {
+              ok: true,
+              platform,
+              identifier,
+              type,
+              url,
+              selectorUsed: listSelector,
+              selectorUpdated: false,
+              extracted,
+            });
+            return;
+          }
+        } catch (e) {
+          // Continue to repair path below
+        }
+
+        // Repair path: ask Ollama for a better selector, validate, persist.
+        const ollamaReady = await isOllamaAvailable();
+        if (!ollamaReady) {
+          sendJson(res, 502, { error: "Selector failed and Ollama is not available for repair." });
+          return;
+        }
+
+        const html = await scraper.fetchPageHtml(url, { session: session || undefined });
+        const proposed = await ollamaProposeListSelector(html, {
+          platform,
+          type,
+          hint: `Need a selector for repeated list rows for ${type}.`,
+        });
+        if (!proposed?.listSelector) {
+          sendJson(res, 500, { error: "AI selector repair failed (no selector returned)." });
+          return;
+        }
+
+        const repairedDom = { listSelector: proposed.listSelector, fields: { text: "" } };
+        try {
+          const data2 = session
+            ? await scraper.scrapeWithSession(url, { session, strategy: "dom", dom: repairedDom })
+            : await scraper.scrapeUrl(url, { strategy: "dom", dom: repairedDom });
+          const extracted2 = data2?.extracted || [];
+          if (!validate(extracted2)) {
+            sendJson(res, 500, { error: "AI proposed selector did not validate.", selectorTried: proposed.listSelector });
+            return;
+          }
+
+          setSelectorOverride(platform, type, { listSelector: proposed.listSelector });
+          sendJson(res, 200, {
+            ok: true,
+            platform,
+            identifier,
+            type,
+            url,
+            selectorUsed: proposed.listSelector,
+            selectorUpdated: true,
+            extracted: extracted2,
+          });
+        } catch (e) {
+          sendJson(res, 500, { error: e?.message || "AI selector validate scrape failed." });
         }
       },
     };

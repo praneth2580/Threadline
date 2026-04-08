@@ -21,7 +21,11 @@ const UI_DIST_PATH = resolve(__dirname, "ui/dist");
 const IS_DEV = process.env.THREADLINE_DEV === "1";
 const HAS_STATIC = !IS_DEV && existsSync(UI_DIST_PATH);
 
+// Bind address for the HTTP server.
 const HOST = "127.0.0.1";
+// Hostname used when launching the UI in a browser window.
+// Some setups expect "localhost" (not the raw loopback IP).
+const BROWSER_HOST = process.env.BROWSER_HOST || "localhost";
 const PREFERRED_PORT = HAS_STATIC
   ? Number(process.env.PORT) || 5173
   : Number(process.env.API_PORT) || 3000;
@@ -30,8 +34,8 @@ const DEV_UI_PORT = Number(process.env.DEV_UI_PORT) || 5173;
 
 let actualPort = null; // set when server is listening
 function getBrowserUrl() {
-  if (HAS_STATIC && actualPort != null) return `http://${HOST}:${actualPort}`;
-  return `http://${HOST}:${DEV_UI_PORT}`;
+  if (HAS_STATIC && actualPort != null) return `http://${BROWSER_HOST}:${actualPort}`;
+  return `http://${BROWSER_HOST}:${DEV_UI_PORT}`;
 }
 
 // `/api/*` routes live in src/api.js (keeps this file focused on server + static + browser lifecycle)

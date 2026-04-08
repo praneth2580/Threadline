@@ -244,3 +244,71 @@ ${listText.slice(0, 4000)}
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// Selector repair (self-healing DOM scraping)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask Ollama to propose a CSS selector that matches the repeated list items we want.
+ *
+ * IMPORTANT:
+ * - This is best-effort. Always validate the selector by running extraction before persisting.
+ *
+ * @param {string} html - Raw HTML string (may be large; caller should truncate if needed)
+ * @param {{ platform: string, type: string, hint?: string }} goal
+ * @returns {Promise<{ listSelector: string } | null>}
+ */
+export async function ollamaProposeListSelector(html, goal) {
+  const platform = goal?.platform || "unknown";
+  const type = goal?.type || "unknown";
+  const hint = goal?.hint ? String(goal.hint).slice(0, 200) : "";
+
+  const prompt = `
+You are a web-scraping engineer. I will give you HTML for a page.
+
+Task: propose a robust CSS selector that selects the repeated "list item" elements for:
+- platform: ${platform}
+- type: ${type}
+${hint ? `- hint: ${hint}` : ""}
+
+Constraints:
+- Prefer stable selectors: data-testid, role, aria-* attributes, and semantic structure.
+- Avoid brittle selectors based on random classnames.
+- The selector should match many items (not a single container).
+- Respond ONLY with valid JSON:
+{ "listSelector": "..." }
+
+HTML (truncated):
+${String(html).slice(0, 14000)}
+`.trim();
+
+  try {
+    const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt,
+        stream: false,
+        options: {
+          temperature: 0.1,
+          num_predict: 200,
+        },
+      }),
+      signal: AbortSignal.timeout(45000),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const raw = (data?.response || "").trim();
+    const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+    const listSelector = typeof parsed.listSelector === "string" ? parsed.listSelector.trim() : "";
+    if (!listSelector) return null;
+    return { listSelector };
+  } catch {
+    return null;
+  }
+}

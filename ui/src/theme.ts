@@ -5,7 +5,7 @@ const getDesignTokens = (mode: PaletteMode): ThemeOptions => ({
     mode,
     ...(mode === "dark"
       ? {
-          primary: { main: "#d4a853" },
+          primary: { main: "#f2c36b" }, // stitch primary
           background: {
             default: "#0d0d0d",
             paper: "#1a1a1a",
@@ -13,7 +13,7 @@ const getDesignTokens = (mode: PaletteMode): ThemeOptions => ({
           divider: "rgba(255,255,255,0.08)",
         }
       : {
-          primary: { main: "#b8860b" },
+          primary: { main: "#7b5804" },
           background: {
             default: "#f5f5f5",
             paper: "#ffffff",
@@ -23,7 +23,8 @@ const getDesignTokens = (mode: PaletteMode): ThemeOptions => ({
   },
   shape: { borderRadius: 12 },
   typography: {
-    fontFamily: '"DM Sans", "Roboto","Helvetica","Arial",sans-serif',
+    fontFamily: '"Manrope", "Roboto","Helvetica","Arial",sans-serif',
+    fontSize: 14,
     h6: { fontWeight: 600 },
   },
   components: {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
     Box,
     CircularProgress,
@@ -40,7 +40,7 @@ export function DbBrowser() {
     const [deleteConfirm, setDeleteConfirm] = useState<{ table: string; row: Record<string, unknown> } | null>(null)
     const [deleting, setDeleting] = useState(false)
 
-    const loadTables = async () => {
+    const loadTables = useCallback(async () => {
         setLoading(true)
         setError(null)
         try {
@@ -55,9 +55,9 @@ export function DbBrowser() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [selectedTable])
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         if (!selectedTable) {
             setData(null)
             return
@@ -77,11 +77,11 @@ export function DbBrowser() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [searchDebounced, selectedTable])
 
     useEffect(() => {
         loadTables()
-    }, [])
+    }, [loadTables])
 
     useEffect(() => {
         const t = setTimeout(() => setSearchDebounced(search.trim()), 300)
@@ -90,7 +90,7 @@ export function DbBrowser() {
 
     useEffect(() => {
         loadData()
-    }, [selectedTable, searchDebounced])
+    }, [loadData])
 
     const handleDelete = async () => {
         if (!deleteConfirm) return
@@ -146,14 +146,11 @@ export function DbBrowser() {
         <Box sx={{ height: "100%", display: "flex", flexDirection: "column", bgcolor: 'background.default' }}>
             <Box
                 sx={{
-                    p: 2,
-                    borderBottom: 1,
-                    borderColor: "divider",
+                    p: 2.5,
                     display: "flex",
                     flexWrap: "wrap",
                     gap: 2,
                     alignItems: "center",
-                    bgcolor: 'background.paper'
                 }}
             >
                 <FormControl size="small" sx={{ minWidth: 200 }}>
@@ -203,8 +200,21 @@ export function DbBrowser() {
                 </Box>
             ) : data ? (
                 <>
-                    <TableContainer sx={{ flex: 1, overflow: "auto" }}>
-                        <Table stickyHeader size="small">
+                    <Box sx={{ px: 2.5, pb: 2.5, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                        <Box
+                            className="glass-panel amber-glow"
+                            sx={{
+                                flex: 1,
+                                minHeight: 0,
+                                borderRadius: 4,
+                                border: "1px solid",
+                                borderColor: "divider",
+                                overflow: "hidden",
+                                boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
+                            }}
+                        >
+                            <TableContainer className="custom-scrollbar" sx={{ height: "100%", overflow: "auto" }}>
+                                <Table stickyHeader size="small">
                             <TableHead>
                                 <TableRow>
                                     {data.columns.map((c) => (
@@ -272,7 +282,9 @@ export function DbBrowser() {
                                 )}
                             </TableBody>
                         </Table>
-                    </TableContainer>
+                            </TableContainer>
+                        </Box>
+                    </Box>
 
                     <Dialog
                         open={Boolean(deleteConfirm)}

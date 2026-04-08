@@ -247,8 +247,71 @@ export function slug(str) {
 // Scraper core: Playwright, extraction strategies, sessions, scrapeUrl / scrapeWithSession
 // ---------------------------------------------------------------------------
 
-function getChromium() {
-  return require("playwright").chromium;
+async function getChromium() {
+  // This file runs as an ES module; `require(...)` is not available.
+  // Use dynamic import so Playwright remains optional until actually used.
+  const pw = await import("playwright");
+  return pw.chromium;
+}
+
+function isMissingBrowserExecutableError(err) {
+  const msg = String(err?.message || err || "");
+  return msg.includes("Executable doesn't exist") || msg.includes("download new browsers");
+}
+
+function getProfileChannel(profilePath) {
+  try {
+    const metaPath = join(profilePath, "threadline-browser.json");
+    if (!existsSync(metaPath)) return null;
+    const raw = readFileSync(metaPath, "utf8");
+    const data = JSON.parse(raw);
+    const ch = typeof data?.channel === "string" ? data.channel.trim() : "";
+    return ch || null;
+  } catch {
+    return null;
+  }
+}
+
+function setProfileChannel(profilePath, channel) {
+  try {
+    const metaPath = join(profilePath, "threadline-browser.json");
+    writeFileSync(metaPath, JSON.stringify({ channel: channel || "default", updatedAt: new Date().toISOString() }, null, 2));
+  } catch {
+    // non-fatal
+  }
+}
+
+async function launchPersistentContextWithFallback(chromium, profilePath, launchOptions) {
+  try {
+    // Prefer explicit channel, else stick to the channel that created this profile.
+    const preferred =
+      (process.env.PLAYWRIGHT_CHANNEL && process.env.PLAYWRIGHT_CHANNEL.trim()) ||
+      getProfileChannel(profilePath);
+
+    if (preferred && preferred !== "default") {
+      const ctx = await chromium.launchPersistentContext(profilePath, { ...launchOptions, channel: preferred });
+      setProfileChannel(profilePath, preferred);
+      return ctx;
+    }
+
+    const ctx = await chromium.launchPersistentContext(profilePath, launchOptions);
+    setProfileChannel(profilePath, "default");
+    return ctx;
+  } catch (e) {
+    if (!isMissingBrowserExecutableError(e)) throw e;
+
+    const channels = [process.env.PLAYWRIGHT_CHANNEL, "msedge", "chrome"].filter(Boolean);
+    for (const channel of channels) {
+      try {
+        const ctx = await chromium.launchPersistentContext(profilePath, { ...launchOptions, channel });
+        setProfileChannel(profilePath, channel);
+        return ctx;
+      } catch (e2) {
+        // try next
+      }
+    }
+    throw e;
+  }
 }
 
 // Extraction strategies: API response (network) vs HTML (DOM)
@@ -281,12 +344,14 @@ export function extractFromDom(html, config) {
     for (const [key, spec] of Object.entries(fields || {})) {
       const sel = typeof spec === "string" ? spec : spec.selector;
       const attr = typeof spec === "object" && spec.attr;
-      const node = $(el).find(sel).first();
-      if (node.length) {
-        row[key] = attr ? (node.attr(attr) || "").trim() : node.text().trim();
-      } else {
-        row[key] = "";
+      // If selector is empty, use the element itself (useful for "just get the list item text").
+      if (!sel) {
+        row[key] = $(el).text().trim();
+        continue;
       }
+      const node = $(el).find(sel).first();
+      if (node.length) row[key] = attr ? (node.attr(attr) || "").trim() : node.text().trim();
+      else row[key] = "";
     }
     result.push(row);
   }
@@ -362,6 +427,42 @@ function ensureAppDir() {
 }
 
 /**
+ * Fetch the full HTML for a page using an optional persistent session profile.
+ * This is used for selector repair: AI needs real DOM markup to propose selectors.
+ *
+ * @param {string} url
+ * @param {{ session?: string }} opts
+ */
+export async function fetchPageHtml(url, opts = {}) {
+  const session = opts.session;
+  if (!session) {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": DEFAULT_HEADERS["User-Agent"],
+        Accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+    return res.text();
+  }
+
+  ensureAppDir();
+  const profilePath = join(PROFILES_DIR, session);
+  if (!existsSync(profilePath)) return fetchPageHtml(url, { session: undefined });
+  const headless = process.env.SCRAPER_HEADLESS !== "false";
+  const chromium = await getChromium();
+  const browser = await launchPersistentContextWithFallback(chromium, profilePath, { headless });
+  try {
+    const page = browser.pages()[0] || (await browser.newPage());
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+    return await page.content();
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
  * Simple fetch + cheerio scrape. For strategy "dom" + options.dom returns { extracted }.
  */
 export async function scrapeUrl(url, options = {}) {
@@ -427,7 +528,8 @@ export async function runInteractiveScrape(url, sessionName) {
   ensureAppDir();
   const profilePath = join(PROFILES_DIR, sessionName);
   mkdirSync(profilePath, { recursive: true });
-  const browser = await getChromium().launchPersistentContext(profilePath, {
+  const chromium = await getChromium();
+  const browser = await launchPersistentContextWithFallback(chromium, profilePath, {
     headless: false,
     viewport: { width: 1280, height: 800 },
     userAgent: DEFAULT_HEADERS["User-Agent"],
@@ -436,9 +538,13 @@ export async function runInteractiveScrape(url, sessionName) {
     const page = browser.pages()[0] || (await browser.newPage());
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     saveSessionName(sessionName);
-    await page.waitForTimeout(10 * 60 * 1000);
+    // Wait until the user closes the window/context.
+    // This avoids fixed timeouts and lets the UI return immediately.
+    await browser.waitForEvent("close");
   } finally {
-    await browser.close();
+    try {
+      await browser.close();
+    } catch (_) { }
   }
 }
 
@@ -450,7 +556,8 @@ export async function scrapeWithSession(url, options = {}) {
   const profilePath = join(PROFILES_DIR, options.session);
   if (!existsSync(profilePath)) return scrapeUrl(url, { selector: options.selector });
   const headless = process.env.SCRAPER_HEADLESS !== "false";
-  const browser = await getChromium().launchPersistentContext(profilePath, { headless });
+  const chromium = await getChromium();
+  const browser = await launchPersistentContextWithFallback(chromium, profilePath, { headless });
   let html;
   try {
     const page = browser.pages()[0] || (await browser.newPage());

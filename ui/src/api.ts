@@ -53,3 +53,18 @@ export async function getApiBase(): Promise<string> {
   cachedBase = `http://127.0.0.1:${PORT_START}`;
   return cachedBase;
 }
+
+export async function scrapeAuto(input: { platform: string; identifier: string; type: string }) {
+  const base = await getApiBase();
+  const r = await fetch(`${base}/api/scrape/auto`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = (data && (data.error || data.message)) || r.statusText;
+    throw new Error(msg);
+  }
+  return data as unknown;
+}

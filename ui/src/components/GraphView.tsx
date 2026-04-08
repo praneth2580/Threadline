@@ -23,7 +23,7 @@ import {
   alpha
 } from "@mui/material"
 import { Search, ZoomIn, ZoomOut, FitScreen, Download, FilterList } from "@mui/icons-material"
-import { getApiBase } from "../api"
+import { getApiBase, scrapeAuto } from "../api"
 
 type Account = { id: number; username: string; platform: string; profile_url?: string }
 type GraphNode = Account & { x: number; y: number; vx: number; vy: number; fx?: number; fy?: number }
@@ -75,8 +75,17 @@ export function GraphView() {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
 
   const [scraping, setScraping] = useState(false)
-  const [_scrapeMsg, setScrapeMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [openConfirm, setOpenConfirm] = useState(false)
+
+  const [autoType, setAutoType] = useState<"profile" | "followers" | "following">("profile")
+  const [autoScraping, setAutoScraping] = useState(false)
+  const [autoResult, setAutoResult] = useState<null | {
+    selectorUsed?: string
+    selectorUpdated?: boolean
+    extracted?: Array<{ text?: string }>
+    error?: string
+  }>(null)
+  const [openAutoResult, setOpenAutoResult] = useState(false)
 
   const [hoveredNodeId, setHoveredNodeId] = useState<number | null>(null)
   const [draggedNodeId, setDraggedNodeId] = useState<number | null>(null)
@@ -240,17 +249,16 @@ export function GraphView() {
     if (!target) return
 
     setScraping(true)
-    setScrapeMsg(null)
     setOpenConfirm(false)
 
     try {
       // Currently backend only supports Instagram specialized scrape+save
       // If platform is something else, we might need a more generic approach later
-      const data = await scrapeInstagramAndSave(target)
-      setScrapeMsg({ type: "success", text: `Scraped ${data.account?.username ?? target} successfully` })
+      await scrapeInstagramAndSave(target)
       fetchAccounts()
     } catch (e) {
-      setScrapeMsg({ type: "error", text: e instanceof Error ? e.message : String(e) })
+      // Errors are surfaced via `error` state elsewhere
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setScraping(false)
     }
@@ -270,6 +278,33 @@ export function GraphView() {
       setOpenConfirm(true)
     } else {
       handleScrape(raw)
+    }
+  }
+
+  const handleAutoScrape = async () => {
+    const id = usernameInput.trim()
+    if (!id) return
+
+    setAutoScraping(true)
+    setAutoResult(null)
+    try {
+      // For now, auto self-heal is wired for Instagram types (backend special-cases URL building).
+      const data = (await scrapeAuto({ platform: "instagram", identifier: id, type: autoType })) as {
+        selectorUsed?: string
+        selectorUpdated?: boolean
+        extracted?: Array<{ text?: string }>
+      }
+      setAutoResult({
+        selectorUsed: data.selectorUsed,
+        selectorUpdated: data.selectorUpdated,
+        extracted: Array.isArray(data.extracted) ? data.extracted : [],
+      })
+      setOpenAutoResult(true)
+    } catch (e) {
+      setAutoResult({ error: e instanceof Error ? e.message : String(e) })
+      setOpenAutoResult(true)
+    } finally {
+      setAutoScraping(false)
     }
   }
 
@@ -348,6 +383,9 @@ export function GraphView() {
 
     requestRef.current = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(requestRef.current)
+    // This animation loop intentionally uses the functional `setNodes` form and
+    // is triggered only when the edge set changes (not on every node tick).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edges.length])
 
   const highlightedConnections = useMemo(() => {
@@ -410,6 +448,19 @@ export function GraphView() {
           >
             {scraping ? "Scraping…" : "Scrape"}
           </Button>
+          <Tooltip title="Self-healing scrape (Instagram)">
+            <span>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleAutoScrape}
+                disabled={autoScraping || !usernameInput.trim()}
+                sx={{ borderRadius: 2, px: 2, whiteSpace: "nowrap" }}
+              >
+                {autoScraping ? <CircularProgress size={16} /> : "Auto scrape"}
+              </Button>
+            </span>
+          </Tooltip>
         </Paper>
 
         <Fade in={showFilters}>
@@ -439,9 +490,71 @@ export function GraphView() {
                 {TYPE_OPTIONS.map(opt => <MenuItem key={opt.value || "all"} value={opt.value}>{opt.label}</MenuItem>)}
               </Select>
             </FormControl>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Auto type</InputLabel>
+              <Select
+                value={autoType}
+                label="Auto type"
+                onChange={(e) => setAutoType(e.target.value as "profile" | "followers" | "following")}
+                sx={{ borderRadius: 2 }}
+              >
+                <MenuItem value="profile">Instagram profile</MenuItem>
+                <MenuItem value="followers">Instagram followers</MenuItem>
+                <MenuItem value="following">Instagram following</MenuItem>
+              </Select>
+            </FormControl>
           </Paper>
         </Fade>
       </Box>
+
+      <Dialog open={openAutoResult} onClose={() => setOpenAutoResult(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Auto scrape result</DialogTitle>
+        <DialogContent dividers>
+          {autoResult?.error ? (
+            <Alert severity="error">{autoResult.error}</Alert>
+          ) : (
+            <>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
+                <Chip
+                  color={autoResult?.selectorUpdated ? "primary" : "default"}
+                  label={autoResult?.selectorUpdated ? "Selector updated" : "Selector unchanged"}
+                  size="small"
+                />
+                {autoResult?.selectorUsed && (
+                  <Chip label={`Selector: ${autoResult.selectorUsed}`} size="small" variant="outlined" />
+                )}
+                <Chip label={`Rows: ${autoResult?.extracted?.length ?? 0}`} size="small" variant="outlined" />
+              </Box>
+
+              <Paper
+                variant="outlined"
+                className="custom-scrollbar"
+                sx={{
+                  p: 1.5,
+                  borderRadius: 3,
+                  maxHeight: 360,
+                  overflow: "auto",
+                  bgcolor: alpha(theme.palette.background.paper, 0.6),
+                }}
+              >
+                {(autoResult?.extracted || []).slice(0, 200).map((r, idx) => (
+                  <Typography key={idx} variant="body2" sx={{ opacity: 0.9, mb: 0.5, whiteSpace: "pre-wrap" }}>
+                    {r.text || ""}
+                  </Typography>
+                ))}
+                {(autoResult?.extracted?.length || 0) === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    No rows extracted.
+                  </Typography>
+                )}
+              </Paper>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAutoResult(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Floating Selection Row */}
       <Box sx={{ position: "absolute", bottom: 16, left: 16, right: 80, zIndex: 100, pointerEvents: "none" }}>
