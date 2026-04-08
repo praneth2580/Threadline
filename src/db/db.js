@@ -2,7 +2,12 @@ import Database from "better-sqlite3";
 import path from "path";
 import os from "os";
 
+import fs from "fs";
+
 const appDir = path.join(os.homedir(), ".threadline");
+if (!fs.existsSync(appDir)) {
+  fs.mkdirSync(appDir, { recursive: true });
+}
 const dbPath = path.join(appDir, "threadline.db");
 
 const db = new Database(dbPath);

@@ -3,7 +3,6 @@
  * Import from here or from '../scraper.js' (re-export): getSessions, scrapeUrl, scrapeWithSession, runInteractiveScrape, extractFromDom, etc.
  */
 import * as cheerio from "cheerio";
-import { parseHtmlForAi } from "../utils/html-parser.js";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -378,21 +377,24 @@ export async function scrapeUrl(url, options = {}) {
     const extracted = extractFromDom(html, options.dom);
     return { title: "", links: [], text: "", extracted, strategy: "dom" };
   }
-  
-  const selectors = options.selector ? [options.selector] : [];
-  const parsed = parseHtmlForAi(html, url, selectors);
-  
+  const $ = cheerio.load(html);
+  const title = $("title").text().trim() || "";
+  const links = [];
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    const text = $(el).text().trim();
+    if (href) links.push({ href, text });
+  });
   let selectorText;
-  if (options.selector && parsed.extractedComponents && parsed.extractedComponents[options.selector]) {
-    selectorText = parsed.extractedComponents[options.selector][0]?.text;
+  if (options.selector) {
+    const el = $(options.selector).first();
+    selectorText = el.text().trim() || undefined;
   }
-
   return {
-    title: parsed.title,
-    links: parsed.links,
-    text: parsed.textContent.slice(0, 5000), // Enforce upper limit to respect context size limits
+    title,
+    links,
+    text: $("body").text().replace(/\s+/g, " ").trim().slice(0, 5000),
     selectorText,
-    extractedComponents: parsed.extractedComponents
   };
 }
 
@@ -489,19 +491,23 @@ export async function scrapeWithSession(url, options = {}) {
   } finally {
     await browser.close();
   }
-  const selectors = options.selector ? [options.selector] : [];
-  const parsed = parseHtmlForAi(html, url, selectors);
-  
+  const $ = cheerio.load(html);
+  const title = $("title").text().trim() || "";
+  const links = [];
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    const text = $(el).text().trim();
+    if (href) links.push({ href, text });
+  });
   let selectorText;
-  if (options.selector && parsed.extractedComponents && parsed.extractedComponents[options.selector]) {
-    selectorText = parsed.extractedComponents[options.selector][0]?.text;
+  if (options.selector) {
+    const el = $(options.selector).first();
+    selectorText = el.text().trim() || undefined;
   }
-
   return {
-    title: parsed.title,
-    links: parsed.links,
-    text: parsed.textContent.slice(0, 5000), // Limit for AI sizing
+    title,
+    links,
+    text: $("body").text().replace(/\s+/g, " ").trim().slice(0, 5000),
     selectorText,
-    extractedComponents: parsed.extractedComponents
   };
 }

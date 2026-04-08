@@ -1,4 +1,6 @@
 import { execSync, spawn } from "child_process";
+import fs from "fs";
+import os from "os";
 import browserConfig from "../../browser-start-cmd.json" with { type: "json" };
 
 // Keys must match browser-start-cmd.json. Order = preference per family.
@@ -15,11 +17,12 @@ const browsersByFamily = {
 };
 
 const configKeys = new Set(Object.keys(browserConfig));
-const browsersOrdered = Object.values(browsersByFamily).flat().filter((b) => configKeys.has(b));
+const browsersOrdered = Object.values(browsersByFamily).flat();
 
 function exists(cmd) {
   try {
-    execSync(`command -v ${cmd}`, { stdio: "ignore" });
+    const isWin = os.platform() === 'win32';
+    execSync(`${isWin ? 'where' : 'command -v'} ${cmd}`, { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -27,11 +30,23 @@ function exists(cmd) {
 }
 
 export function checkAvaliableBrowser(browserFamily = null) {
-  const list = browserFamily
-    ? (browsersByFamily[browserFamily] || []).filter((b) => configKeys.has(b))
-    : browsersOrdered;
+  const list = browserFamily ? (browsersByFamily[browserFamily] || []) : browsersOrdered;
   for (const browser of list) {
     if (exists(browser)) return browser;
+  }
+  
+  // If not found in PATH, check common hardcoded Windows paths
+  if (os.platform() === 'win32') {
+    const winPaths = [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+    ];
+    for (const p of winPaths) {
+      if (fs.existsSync(p)) return p;
+    }
   }
   return undefined;
 }
@@ -44,14 +59,25 @@ export function checkAvaliableBrowser(browserFamily = null) {
  */
 export function startBrowser(url, user_path) {
   const key = checkAvaliableBrowser();
-  if (!key || !browserConfig[key]) {
+  if (!key) {
     console.error("No supported browser found");
     process.exit(1);
   }
-  const { binary, args } = browserConfig[key];
+  
+  // Map Windows executable/absolute names back to the config keys safely
+  let configKey = key;
+  if (key.includes("chrome") || key === "chrome") configKey = "google-chrome";
+  else if (key.includes("edge") || key === "msedge") configKey = "microsoft-edge";
+  else if (key.includes("brave") || key === "brave") configKey = "brave-browser";
+
+  if (!browserConfig[configKey]) {
+      configKey = Object.keys(browserConfig)[0];
+  }
+
+  const { args } = browserConfig[configKey];
   const temp_args = args.map(arg =>
     arg.replace("${url}", url).replace("${user_path}", user_path)
   );
-  const child = spawn(binary, temp_args, { stdio: "ignore" });
+  const child = spawn(key, temp_args, { stdio: "ignore" });
   return child;
 }
